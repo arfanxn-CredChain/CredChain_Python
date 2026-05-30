@@ -1,0 +1,64 @@
+[project]
+name = "credchain-python"
+version = "0.1.0"
+description = "CredChain AI service: OCR + embeddings + LLM extraction + similarity verdict"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "fastapi==0.115.5",
+    "uvicorn[standard]==0.32.1",
+    "python-multipart==0.0.17",
+    "pydantic==2.10.3",
+    "pydantic-settings==2.6.1",
+    "pymupdf==1.25.1",
+    "easyocr==1.7.2",
+    "sentence-transformers==3.3.1",
+    "torch==2.5.1",
+    "llama-cpp-python==0.3.4",
+    "rapidfuzz==3.10.1",
+    "Pillow==11.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.24.0",
+    "httpx==0.28.1",
+    "ruff==0.8.4",
+    "mypy==1.13.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["tests*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RET", "PT"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["B011", "PT011"]
+"app/routes.py" = ["B008"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

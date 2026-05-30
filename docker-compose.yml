@@ -1,0 +1,38 @@
+# Standalone local Docker Compose for the CredChain Python AI service.
+#
+# IMPORTANT — DEVELOPMENT ONLY:
+#   The `ports` mapping below binds 8081 to 127.0.0.1 (localhost only)
+#   so external network traffic cannot reach this service.
+#
+#   In production deployments alongside the Go backend, REMOVE the
+#   `ports` block entirely. The service should only be reachable via
+#   the internal Docker `backend` network at http://credchain-python:8081.
+#   The Python service has NO authentication, NO rate limiting, and is
+#   not safe for public exposure.
+
+services:
+  python-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: arfanxn/credchain-python:latest
+    container_name: credchain-python
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    volumes:
+      - ./models:/models:ro
+    ports:
+      - "127.0.0.1:8081:8081"  # localhost only — DEV ONLY
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
