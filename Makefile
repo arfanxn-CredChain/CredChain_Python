@@ -4,7 +4,7 @@ ifneq (,$(wildcard $(ENV_FILE)))
     export
 endif
 
-.PHONY: help install download-models serve dev test lint typecheck format \
+.PHONY: help install download-models gen-fixtures serve dev test lint typecheck format \
 	docker-up docker-up-build docker-down docker-logs docker-ps docker-fresh
 
 help:
@@ -30,6 +30,10 @@ help:
 
 install:
 	pip install -e ".[dev]"
+
+gen-fixtures:
+	.venv/bin/python tests/fixtures/gen_fixtures.py
+	@echo ">>> Fixtures generated in tests/fixtures/"
 
 download-models:
 	@echo ">>> Downloading EasyOCR (id+en) into ./models/easyocr..."

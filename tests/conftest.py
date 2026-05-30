@@ -38,3 +38,6 @@ def mock_llm() -> MagicMock:
         "choices": [{"message": {"content": "{}"}}]
     }
     return mock
+
+
+collect_ignore = ["integration_test.py"]
