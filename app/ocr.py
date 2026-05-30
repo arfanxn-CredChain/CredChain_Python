@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 MIN_USEFUL_TEXT_CHARS = 50
 MIN_PRINTABLE_RATIO = 0.80
+MAX_PDF_PAGES = 50
+MAX_OCR_TEXT_LENGTH = 200_000
 
 PDF_MIME = "application/pdf"
 IMAGE_MIMES: frozenset[str] = frozenset({
@@ -76,7 +78,9 @@ def _extract_from_pdf(reader: "easyocr.Reader", file_bytes: bytes) -> str:
     direct_chunks: list[str] = []
     fallback_chunks: list[str] = []
     with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-        for page in doc:
+        for page_num, page in enumerate(doc):
+            if page_num >= MAX_PDF_PAGES:
+                break
             page_text = page.get_text() or ""
             if is_text_useful(page_text):
                 direct_chunks.append(page_text)
@@ -85,10 +89,10 @@ def _extract_from_pdf(reader: "easyocr.Reader", file_bytes: bytes) -> str:
                 png_bytes = pix.tobytes("png")
                 fallback_chunks.append(_easyocr_to_text(reader, png_bytes))
     if direct_chunks and not fallback_chunks:
-        return "\n".join(direct_chunks).strip()
-    return "\n".join([*direct_chunks, *fallback_chunks]).strip()
+        return "\n".join(direct_chunks).strip()[:MAX_OCR_TEXT_LENGTH]
+    return "\n".join([*direct_chunks, *fallback_chunks]).strip()[:MAX_OCR_TEXT_LENGTH]
 
 
 def _easyocr_to_text(reader: "easyocr.Reader", image_bytes: bytes) -> str:
     fragments = reader.readtext(image_bytes)
-    return " ".join(frag[1] for frag in fragments).strip()
+    return " ".join(frag[1] for frag in fragments).strip()[:MAX_OCR_TEXT_LENGTH]

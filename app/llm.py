@@ -6,6 +6,7 @@ so generate_description_id and translate_to_english have been removed.
 """
 
 import json
+import threading
 from typing import TYPE_CHECKING, Any
 
 from app import codes
@@ -63,6 +64,65 @@ def extract_fields(llm: "Llama", text: str) -> dict[str, str]:
     prompt = f"{EXTRACT_PROMPT}\n\nDocument text:\n{text}"
     for attempt in range(2):
         raw = _generate(llm, prompt, json_mode=True)
+        try:
+            result = json.loads(raw)
+            if isinstance(result, dict):
+                return {str(k): str(v) for k, v in result.items()}
+        except (json.JSONDecodeError, ValueError):
+            if attempt == 0:
+                prompt = (
+                    f"{EXTRACT_PROMPT}\n\nYour previous response was not valid JSON. "
+                    f"Output ONLY a JSON object.\n\nDocument text:\n{text}"
+                )
+    raise AppError(codes.CODE_AI_EXTRACT_LLM_FAILED)
+
+
+def _generate_with_cancel(
+    llm: "Llama",
+    prompt: str,
+    max_tokens: int,
+    cancel_event: threading.Event,
+) -> str:
+    """Stream tokens from Qwen and stop early if cancel_event is set.
+
+    Uses stream=True so generation can be interrupted at token boundaries.
+    When cancel_event is set, the loop exits and partial output is returned.
+    This allows asyncio.wait_for to actually stop work rather than abandoning
+    a running thread.
+    """
+    tokens: list[str] = []
+    for chunk in llm.create_chat_completion(
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=max_tokens,
+        temperature=0.0,
+        stream=True,
+    ):
+        if cancel_event.is_set():
+            break
+        delta = str(chunk["choices"][0].get("delta", {}).get("content", ""))  # type: ignore[index, union-attr]
+        if delta:
+            tokens.append(delta)
+    return "".join(tokens)
+
+
+def extract_fields_with_cancel(
+    llm: "Llama",
+    text: str,
+    cancel_event: threading.Event,
+) -> dict[str, str]:
+    """Like extract_fields but accepts a cancel_event for cooperative cancellation.
+
+    When cancel_event is set between tokens, generation stops and
+    AppError(CODE_AI_LLM_TIMEOUT) is raised so the caller knows it was
+    cancelled rather than failed.
+    """
+    if not text or not text.strip():
+        return {}
+    prompt = f"{EXTRACT_PROMPT}\n\nDocument text:\n{text}"
+    for attempt in range(2):
+        raw = _generate_with_cancel(llm, prompt, settings.llm_max_new_tokens, cancel_event)
+        if cancel_event.is_set():
+            raise AppError(codes.CODE_AI_LLM_TIMEOUT)
         try:
             result = json.loads(raw)
             if isinstance(result, dict):

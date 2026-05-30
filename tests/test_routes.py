@@ -1,3 +1,4 @@
+import asyncio
 import json
 from io import BytesIO
 from unittest.mock import MagicMock
@@ -16,6 +17,7 @@ def _build_app(easyocr_reader=None, embedding_model=None, llm=None) -> FastAPI:
     app.state.easyocr_reader = easyocr_reader or MagicMock()
     app.state.embedding_model = embedding_model or MagicMock()
     app.state.llm = llm if llm is not None else MagicMock()
+    app.state.llm_lock = asyncio.Lock()
     app.include_router(routes.router)
 
     @app.exception_handler(AppError)
@@ -70,7 +72,7 @@ def test_extract_happy_path_single_file(monkeypatch):
     client = TestClient(app)
     monkeypatch.setattr(routes.ocr, "extract_text", lambda *a, **k: "raw text")
     monkeypatch.setattr(routes.embeddings, "encode", lambda *a, **k: [0.1] * 768)
-    monkeypatch.setattr(routes.llm, "extract_fields", lambda *a, **k: {"name": "Alice"})
+    monkeypatch.setattr(routes.llm, "extract_fields_with_cancel", lambda *a, **k: {"name": "Alice"})
     resp = client.post(
         "/extract",
         files=[("files", ("doc.pdf", BytesIO(b"%PDF-1.4 content"), "application/pdf"))],
@@ -89,7 +91,7 @@ def test_extract_multiple_files(monkeypatch):
     client = TestClient(app)
     monkeypatch.setattr(routes.ocr, "extract_text", lambda *a, **k: "raw text")
     monkeypatch.setattr(routes.embeddings, "encode", lambda *a, **k: [0.1] * 768)
-    monkeypatch.setattr(routes.llm, "extract_fields", lambda *a, **k: {"name": "Alice"})
+    monkeypatch.setattr(routes.llm, "extract_fields_with_cancel", lambda *a, **k: {"name": "Alice"})
     resp = client.post(
         "/extract",
         files=[
@@ -116,7 +118,7 @@ def test_extract_partial_failure(monkeypatch):
 
     monkeypatch.setattr(routes.ocr, "extract_text", fake_extract)
     monkeypatch.setattr(routes.embeddings, "encode", lambda *a, **k: [0.1] * 768)
-    monkeypatch.setattr(routes.llm, "extract_fields", lambda *a, **k: {"name": "Alice"})
+    monkeypatch.setattr(routes.llm, "extract_fields_with_cancel", lambda *a, **k: {"name": "Alice"})
     resp = client.post(
         "/extract",
         files=[
@@ -137,7 +139,7 @@ def test_verify_happy_path_metadata(monkeypatch):
     monkeypatch.setattr(routes.ocr, "extract_text", lambda *a, **k: "uploaded text")
     monkeypatch.setattr(routes.embeddings, "encode", lambda *a, **k: [0.5] * 768)
     monkeypatch.setattr(routes.embeddings, "cosine_similarity", lambda *a, **k: 0.91)
-    monkeypatch.setattr(routes.llm, "extract_fields", lambda *a, **k: {"name": "Alice"})
+    monkeypatch.setattr(routes.llm, "extract_fields_with_cancel", lambda *a, **k: {"name": "Alice"})
     monkeypatch.setattr(
         routes.desc_module, "build_description",
         lambda *a, **k: {"id": "Ringkasan id", "en": "EN summary"},

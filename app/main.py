@@ -5,6 +5,7 @@ logging, unified error envelope. Reachable only inside the Docker
 backend network — never exposed to the public internet.
 """
 
+import asyncio
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -53,6 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         chat_format="chatml",
         verbose=False,
     )
+    app.state.llm_lock = asyncio.Lock()
 
     app.state.models_loaded = True
     log.info("models ready", extra={"extra_fields": {"phase": "ready"}})

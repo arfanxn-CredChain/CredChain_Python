@@ -10,10 +10,12 @@ outcome (success if any file succeeded, else error).
 
 import asyncio
 import json
+import threading
 from typing import TYPE_CHECKING
 
 import easyocr
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.responses import JSONResponse
 from sentence_transformers import SentenceTransformer
 
 from app import codes, comparison, embeddings, id_extractor, llm, logger, ocr, schemas
@@ -164,6 +166,10 @@ def get_llm(request: Request) -> "Llama":
     return request.app.state.llm  # type: ignore[no-any-return]
 
 
+def get_llm_lock(request: Request) -> asyncio.Lock:
+    return request.app.state.llm_lock  # type: ignore[no-any-return]
+
+
 # ---- endpoints ----
 @router.post(
     "/extract",
@@ -175,6 +181,7 @@ async def extract(
     reader: easyocr.Reader = Depends(get_easyocr),
     embed_model: SentenceTransformer = Depends(get_embedding_model),
     llm_inst: "Llama" = Depends(get_llm),
+    llm_lock: asyncio.Lock = Depends(get_llm_lock),
 ) -> schemas.Response[list[schemas.ExtractData | None]]:
     validate_files(files)
     data: list[schemas.ExtractData | None] = []
@@ -183,15 +190,20 @@ async def extract(
     for i, file in enumerate(files):
         try:
             file_bytes, mime_type = validate_file(file)
-            raw_text = ocr.extract_text(reader, file_bytes, mime_type)
-            embeddings_list = embeddings.encode(embed_model, raw_text)
-            try:
-                fields = await asyncio.wait_for(
-                    asyncio.to_thread(llm.extract_fields, llm_inst, raw_text),
-                    timeout=settings.llm_timeout_seconds,
-                )
-            except TimeoutError:
-                raise AppError(codes.CODE_AI_LLM_TIMEOUT) from None
+            raw_text = await asyncio.to_thread(ocr.extract_text, reader, file_bytes, mime_type)
+            embeddings_list = await asyncio.to_thread(embeddings.encode, embed_model, raw_text)
+            cancel_event = threading.Event()
+            async with llm_lock:
+                try:
+                    fields = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            llm.extract_fields_with_cancel, llm_inst, raw_text, cancel_event
+                        ),
+                        timeout=settings.llm_timeout_seconds,
+                    )
+                except TimeoutError:
+                    cancel_event.set()
+                    raise AppError(codes.CODE_AI_LLM_TIMEOUT) from None
             data.append(schemas.ExtractData(
                 raw_text=raw_text,
                 embeddings=embeddings_list,
@@ -201,9 +213,13 @@ async def extract(
         except AppError as exc:
             data.append(None)
             errors[f"files.{i}"] = [exc.message]
-        except Exception as exc:
+        except Exception:
             data.append(None)
-            errors[f"files.{i}"] = [f"Internal error: {exc}"]
+            log.exception(
+                "unhandled per-file error",
+                extra={"extra_fields": {"file_index": i, "filename": file.filename}},
+            )
+            errors[f"files.{i}"] = ["Internal error processing file"]
     code = (
         codes.CODE_AI_EXTRACT_SUCCESS
         if success_count > 0
@@ -233,6 +249,7 @@ async def verify(
     reader: easyocr.Reader = Depends(get_easyocr),
     embed_model: SentenceTransformer = Depends(get_embedding_model),
     llm_inst: "Llama" = Depends(get_llm),
+    llm_lock: asyncio.Lock = Depends(get_llm_lock),
 ) -> schemas.Response[list[schemas.VerifyData | None]]:
     validate_files(files)
     items = parse_verify_metadata(metadata, expected_len=len(files))
@@ -242,20 +259,26 @@ async def verify(
     for i, (file, item) in enumerate(zip(files, items, strict=True)):
         try:
             file_bytes, mime_type = validate_file(file)
-            raw_text = ocr.extract_text(reader, file_bytes, mime_type)
-            embeddings_list = embeddings.encode(embed_model, raw_text)
+            raw_text = await asyncio.to_thread(ocr.extract_text, reader, file_bytes, mime_type)
+            embeddings_list = await asyncio.to_thread(embeddings.encode, embed_model, raw_text)
             similarity = embeddings.cosine_similarity(embeddings_list, item.stored_embeddings)
             verdict = comparison.verdict_for(similarity)
             if verdict == "NOT_SIMILAR":
                 comparison_dict: dict[str, schemas.FieldComparisonEntry] = {}
             else:
-                try:
-                    fields_uploaded = await asyncio.wait_for(
-                        asyncio.to_thread(llm.extract_fields, llm_inst, raw_text),
-                        timeout=settings.llm_timeout_seconds,
-                    )
-                except TimeoutError:
-                    raise AppError(codes.CODE_AI_LLM_TIMEOUT) from None
+                cancel_event = threading.Event()
+                async with llm_lock:
+                    try:
+                        fields_uploaded = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                llm.extract_fields_with_cancel,
+                                llm_inst, raw_text, cancel_event,
+                            ),
+                            timeout=settings.llm_timeout_seconds,
+                        )
+                    except TimeoutError:
+                        cancel_event.set()
+                        raise AppError(codes.CODE_AI_LLM_TIMEOUT) from None
                 comparison_dict = comparison.compare_fields(item.stored_fields, fields_uploaded)
             sim_percent = comparison.format_percent(similarity)
             desc = desc_module.build_description(verdict, similarity, sim_percent, comparison_dict)
@@ -274,9 +297,13 @@ async def verify(
         except AppError as exc:
             data.append(None)
             errors[f"files.{i}"] = [exc.message]
-        except Exception as exc:
+        except Exception:
             data.append(None)
-            errors[f"files.{i}"] = [f"Internal error: {exc}"]
+            log.exception(
+                "unhandled per-file error",
+                extra={"extra_fields": {"file_index": i, "filename": file.filename}},
+            )
+            errors[f"files.{i}"] = ["Internal error processing file"]
     code = (
         codes.CODE_AI_VERIFY_SUCCESS
         if success_count > 0
@@ -311,7 +338,7 @@ async def extract_ids(
     for i, file in enumerate(files):
         try:
             file_bytes, mime_type = validate_file(file)
-            raw_text = ocr.extract_text(reader, file_bytes, mime_type)
+            raw_text = await asyncio.to_thread(ocr.extract_text, reader, file_bytes, mime_type)
             potential_ids = id_extractor.extract_ids(raw_text)
             data.append(schemas.ExtractIdsData(
                 raw_text=raw_text,
@@ -321,9 +348,13 @@ async def extract_ids(
         except AppError as exc:
             data.append(None)
             errors[f"files.{i}"] = [exc.message]
-        except Exception as exc:
+        except Exception:
             data.append(None)
-            errors[f"files.{i}"] = [f"Internal error: {exc}"]
+            log.exception(
+                "unhandled per-file error",
+                extra={"extra_fields": {"file_index": i, "filename": file.filename}},
+            )
+            errors[f"files.{i}"] = ["Internal error processing file"]
     code = (
         codes.CODE_AI_EXTRACT_IDS_SUCCESS
         if success_count > 0
@@ -344,16 +375,19 @@ async def extract_ids(
 
 @router.get(
     "/health",
-    response_model=schemas.Response[schemas.HealthData],
     summary="Liveness + model readiness check",
 )
-async def health(request: Request) -> schemas.Response[schemas.HealthData]:
+async def health(request: Request) -> JSONResponse:
     models_loaded = getattr(request.app.state, "models_loaded", False)
-    return schemas.Response(
-        code=codes.CODE_AI_HEALTH_SUCCESS if models_loaded else codes.CODE_AI_HEALTH_NOT_READY,
-        message="Service is healthy" if models_loaded else "Models not yet loaded",
-        data=schemas.HealthData(
-            status="ok" if models_loaded else "starting",
-            models_loaded=models_loaded,
-        ),
+    code = codes.CODE_AI_HEALTH_SUCCESS if models_loaded else codes.CODE_AI_HEALTH_NOT_READY
+    http_status = 200 if models_loaded else 503
+    data = schemas.HealthData(
+        status="ok" if models_loaded else "starting",
+        models_loaded=models_loaded,
     )
+    body = schemas.Response(
+        code=code,
+        message="Service is healthy" if models_loaded else "Models not yet loaded",
+        data=data,
+    ).model_dump(exclude_none=True)
+    return JSONResponse(status_code=http_status, content=body)

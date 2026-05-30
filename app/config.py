@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
@@ -106,6 +106,24 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [item.strip() for item in v.split(",") if item.strip()]
         return v
+
+    @model_validator(mode="after")
+    def validate_model_paths(self) -> "Settings":
+        """Fail fast if the GGUF model file is missing at startup.
+
+        Conditional on model_dir existing so tests (which use /models that
+        doesn't exist locally) still pass without downloading models.
+        """
+        from pathlib import Path
+        model_dir = Path(self.model_dir)
+        if model_dir.exists():
+            gguf_path = model_dir / "qwen" / self.llm_model_file
+            if not gguf_path.exists():
+                raise ValueError(
+                    f"LLM model file not found: {gguf_path}. "
+                    f"Run `make download-models` first."
+                )
+        return self
 
     @classmethod
     def settings_customise_sources(

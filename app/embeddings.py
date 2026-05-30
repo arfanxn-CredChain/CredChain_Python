@@ -26,6 +26,14 @@ def encode(model: "SentenceTransformer", text: str) -> list[float]:
     """
     if not text or not text.strip():
         raise AppError(codes.CODE_AI_INTERNAL, message="Cannot encode empty text")
+    max_seq = int(getattr(model, "max_seq_length", 512) or 512)
+    word_count = len(text.split())
+    if word_count > max_seq:
+        import logging as _logging
+        _logging.getLogger("embeddings").warning(
+            "text may exceed LaBSE max_seq_length and will be truncated: "
+            "word_count=%d max_seq=%d", word_count, max_seq,
+        )
     arr = model.encode(text, normalize_embeddings=True, convert_to_numpy=True)
     return [float(x) for x in arr.tolist()]
 
