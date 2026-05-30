@@ -87,6 +87,7 @@ class Settings(BaseSettings):
 
     llm_max_new_tokens: int = 512
     llm_device: str = "cpu"
+    llm_timeout_seconds: int = 60
     llm_model_name: str = "Qwen2.5-0.5B-Instruct"
     llm_model_file: str = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
     embedding_model_name: str = "LaBSE"

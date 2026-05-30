@@ -8,6 +8,7 @@ appear in `data` at the matching index. Top-level `code` reflects overall
 outcome (success if any file succeeded, else error).
 """
 
+import asyncio
 import json
 from typing import TYPE_CHECKING
 
@@ -184,7 +185,13 @@ async def extract(
             file_bytes, mime_type = validate_file(file)
             raw_text = ocr.extract_text(reader, file_bytes, mime_type)
             embeddings_list = embeddings.encode(embed_model, raw_text)
-            fields = llm.extract_fields(llm_inst, raw_text)
+            try:
+                fields = await asyncio.wait_for(
+                    asyncio.to_thread(llm.extract_fields, llm_inst, raw_text),
+                    timeout=settings.llm_timeout_seconds,
+                )
+            except TimeoutError:
+                raise AppError(codes.CODE_AI_LLM_TIMEOUT) from None
             data.append(schemas.ExtractData(
                 raw_text=raw_text,
                 embeddings=embeddings_list,
@@ -242,7 +249,13 @@ async def verify(
             if verdict == "NOT_SIMILAR":
                 comparison_dict: dict[str, schemas.FieldComparisonEntry] = {}
             else:
-                fields_uploaded = llm.extract_fields(llm_inst, raw_text)
+                try:
+                    fields_uploaded = await asyncio.wait_for(
+                        asyncio.to_thread(llm.extract_fields, llm_inst, raw_text),
+                        timeout=settings.llm_timeout_seconds,
+                    )
+                except TimeoutError:
+                    raise AppError(codes.CODE_AI_LLM_TIMEOUT) from None
                 comparison_dict = comparison.compare_fields(item.stored_fields, fields_uploaded)
             sim_percent = comparison.format_percent(similarity)
             desc = desc_module.build_description(verdict, similarity, sim_percent, comparison_dict)

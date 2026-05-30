@@ -139,6 +139,10 @@ def _make_credential_image(
     """Render a credential as a PIL image with white background."""
     img = Image.new("RGB", size, color=(255, 255, 255))
     draw = ImageDraw.Draw(img)
+    from PIL.ImageFont import FreeTypeFont
+    from PIL.ImageFont import ImageFont as PILImageFont
+    font_title: FreeTypeFont | PILImageFont
+    font_body: FreeTypeFont | PILImageFont
     try:
         font_title = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 24)
         font_body = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 16)

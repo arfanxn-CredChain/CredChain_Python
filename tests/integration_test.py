@@ -16,8 +16,9 @@ import argparse
 import json
 import sys
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import requests
 
@@ -26,11 +27,11 @@ BASE_URL = "http://127.0.0.1:8082"
 FAST_TIMEOUT = 10
 LLM_TIMEOUT = 900
 
-results: list[dict] = []
+results: list[dict[str, Any]] = []
 
 
 def log(msg: str) -> None:
-    ts = datetime.now(UTC).strftime("%H:%M:%S")
+    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
     print(f"[{ts}] {msg}")
 
 
@@ -226,7 +227,7 @@ def write_report(report_path: Path) -> None:
     failed = sum(1 for r in results if r["status"] == "FAIL")
     errors = sum(1 for r in results if r["status"] == "ERROR")
     total = len(results)
-    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     lines = [
         "# CredChain Python AI Service — Integration Test Report",
         f"**Date:** {now}",
@@ -272,7 +273,7 @@ def main() -> None:
 
     report_path = (
         Path(__file__).parent.parent.parent / "docs" /
-        f"integration-test-report-{datetime.now(UTC).strftime('%Y-%m-%d')}-full.md"
+        f"integration-test-report-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}-full.md"
     )
     write_report(report_path)
 

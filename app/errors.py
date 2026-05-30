@@ -9,6 +9,7 @@ DEFAULT_MESSAGES: dict[int, str] = {
     codes.CODE_AI_EXTRACT_SUCCESS: "Document extracted successfully",
     codes.CODE_AI_EXTRACT_OCR_FAILED: "OCR failed during extraction",
     codes.CODE_AI_EXTRACT_LLM_FAILED: "LLM extraction failed",
+    codes.CODE_AI_LLM_TIMEOUT: "LLM inference timed out",
     codes.CODE_AI_VERIFY_SUCCESS: "Verification completed",
     codes.CODE_AI_VERIFY_INVALID_INPUT: "Invalid stored_embeddings or stored_fields",
     codes.CODE_AI_VERIFY_OCR_FAILED: "OCR failed during verification",
