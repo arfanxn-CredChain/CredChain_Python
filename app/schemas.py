@@ -20,45 +20,29 @@ class Response(BaseModel, Generic[T]):
 
 class ExtractData(BaseModel):
     """Payload returned from POST /extract."""
-
     raw_text: str
+    ids: list[dict[str, str]]
     embeddings: list[float]
 
 
-class VerifyDescription(BaseModel):
-    """Bilingual natural-language summary of the verify result."""
-
-    id: str
-    en: str
-
-
 class VerifyData(BaseModel):
-    """Payload returned from POST /verify."""
-
+    """Payload returned from POST /verify. Description is single-language string."""
     similarity_score: float
     similarity_percent: str
     verdict: str
-    description: VerifyDescription
+    description: str
 
 
 class VerifyMetadataItem(BaseModel):
-    """Single item in the /verify metadata array.
-
-    Pairs positionally with files[i] in multipart upload.
-    """
-
+    """Single item in the /verify metadata array."""
     stored_embeddings: list[float]
 
 
 class ExtractIdsData(BaseModel):
-    """Payload returned from POST /extract-ids."""
-
-    raw_text: str
-    potential_ids: list[str]
+    """Payload returned from POST /extract-ids. ID-only, no raw_text."""
+    ids: list[dict[str, str]]
 
 
 class HealthData(BaseModel):
     """Payload returned from GET /health."""
-
-    status: str
-    models_loaded: bool
+    message: str
