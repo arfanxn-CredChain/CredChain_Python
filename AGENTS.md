@@ -1,16 +1,16 @@
 # CredChain Python - Agent Instructions
 
-Python AI service called by the Go backend over HTTP. Performs OCR, semantic similarity, bilingual description generation, and regex-based ID extraction. Runs fully offline (no external API calls). Reachable only inside the Docker backend network — **never expose to public internet** (no auth, no rate limiting).
+Python AI service called by the Go backend over HTTP. Uses Google Gemini (Files API + direct upload) for document extraction and EmbeddingGemma (sentence-transformers) for semantic similarity embeddings. Requires a Gemini API key — no longer fully offline. Reachable only inside the Docker backend network — **never expose to public internet** (no auth, no rate limiting).
 
 This file is the authoritative reference for AI assistants and engineers working in `CredChain_Python/`.
 
 ## Repo Position
 
-Sibling to `CredChain_Golang/` (backend, sole HTTP caller), `CredChain_React/` (frontend), and `CredChain_Solidity/` (contracts).
+Sibling to `CredChain_Golang/` (backend, sole HTTP caller), `CredChain_Solidity/` (contracts), and `CredChain_React_Demo/` (deprecated).
 
 - **Consumer:** the Go backend is the only intended caller. Requests flow `React → Go API → Python AI`. The frontend never talks to this service directly.
-- **Locales:** `locales/{en,id}.json` are tracked and kept in sync with the corresponding files in `CredChain_Golang/locales/` and `CredChain_React/src/shared/i18n/`. React enforces sync via `npm run check-locales`.
-- **Network isolation:** the service binds inside the Docker backend network only. There is no auth middleware, no rate limiter, no CORS protection beyond the configurable `CORS_ALLOW_ORIGINS` — exposing it publicly would allow arbitrary OCR/LLM execution against arbitrary input.
+- **Locales:** `locales/{en,id}.json` are tracked and kept in sync with the corresponding files in `CredChain_Golang/locales/`.
+- **Network isolation:** the service binds inside the Docker backend network only. There is no auth middleware, no rate limiter, no CORS protection beyond the configurable `CORS_ALLOW_ORIGINS` — exposing it publicly would allow arbitrary Gemini execution against arbitrary input.
 
 ## Critical Commands
 
@@ -19,7 +19,7 @@ python3.11 -m venv .venv && source .venv/bin/activate    # one-time
 make install                                              # install deps + dev extras
 make serve                                                # run uvicorn locally on :8081 (single worker)
 make dev                                                  # uvicorn with --reload
-make test                                                 # pytest tests/ -v (mocked, ~5s for 123 tests)
+make test                                                 # pytest tests/ -v
 make lint                                                 # ruff check
 make typecheck                                            # mypy (strict mode on source, relaxed on tests)
 make format                                               # ruff format
@@ -40,41 +40,59 @@ make install
 make serve              # binds :8081 by default
 ```
 
-Models are baked into the Docker image via a multi-stage Dockerfile — no host download required.
+**Required API keys:**
+- `GEMINI_API_KEY` — Google Gemini API key (fatal if empty; extraction calls will fail)
+- `HF_TOKEN` — HuggingFace token for gated model access (required for EmbeddingGemma download)
 
-No external API keys required — the service runs fully offline.
+EmbeddingGemma is downloaded at startup from HuggingFace Hub via `sentence-transformers`. No baked-in model files.
+
+## Tech Stack
+
+Pinned in `pyproject.toml`:
+
+| Layer | Tool | Version |
+|---|---|---|
+| Language | Python | ≥3.11, <3.13 |
+| Web framework | FastAPI | 0.115.5 |
+| ASGI server | uvicorn[standard] | 0.32.1 |
+| Gemini SDK | google-genai | — |
+| Embeddings | sentence-transformers (EmbeddingGemma) | ≥3.3.1 |
+| HuggingFace | huggingface-hub | — |
+| Math | numpy | — |
+| Image | Pillow | 11.0.0 |
+| Test | pytest | 8.3.4 |
+| Async test | pytest-asyncio | 0.24.0 |
+| HTTP test | httpx | 0.28.1 |
+| Lint | ruff | 0.8.4 |
+| Type check | mypy | 1.13.0 |
 
 ## Project Architecture
 
-Flat layout under `app/`. 13 source modules + `tests/`:
+Flat layout under `app/`. 12 source modules + `tests/`:
 
 ```
 CredChain_Python/
   app/
-    main.py             → FastAPI app + lifespan (loads 2 models) + middleware + error handlers
-    routes.py           → 4 endpoints: /extract /verify /extract-ids /health
+    main.py             → FastAPI app + lifespan (loads EmbeddingGemma + initializes Gemini client) + i18n middleware + error handlers
+    routes.py           → 4 endpoints: /extract /verify /extract-ids /health (all Gemini-piped)
     schemas.py          → Pydantic Response[T] envelope + per-endpoint payloads
     config.py           → pydantic-settings .env loader + custom CSV env source
-    codes.py            → 50xxxx response codes (System/Extract/Verify/Health/AI)
-    errors.py           → AppError + DEFAULT_MESSAGES + http_status_for
+    codes.py            → 50xxxx response codes (System/Extract/Verify/ExtractIds/Health)
+    errors.py           → AppError + http_status_for
     logger.py           → structured JSON logger (mirrors Go's zap shape)
-    ocr.py              → PyMuPDF + EasyOCR fallback, is_text_useful() check
-    embeddings.py       → LaBSE encode + cosine_similarity helper
-    description.py      → bilingual description from locales/ templates (no LLM call)
+    gemini.py           → GeminiClient — Files API (batch) + direct upload (single) + retry logic
+    embeddings.py       → EmbeddingGemma encode + cosine_similarity helper
+    description.py      → single-language description from locales/ templates (no LLM call)
     i18n.py             → locale loader + localize(key, lang, **vars)
-    comparison.py       → rapidfuzz token_set_ratio key matching + verdict mapping
-    id_extractor.py     → regex-based ID extraction (built-in + custom patterns)
-  tests/                → conftest.py + 14 test files (~123 tests, fully mocked)
+    verdict.py          → similarity → verdict mapping (configurable thresholds)
+    prompts.py          → Gemini prompt constants (PROMPT_EXTRACT_DOCUMENT, PROMPT_EXTRACT_IDS)
+  tests/                → conftest.py + test files (fully mocked)
     fixtures/           → shared test data
-  models/easyocr/       → gitignored, ~150 MB EasyOCR weights (baked into image)
-  models/labse/         → gitignored, ~1.8 GB LaBSE weights (baked into image)
   locales/              → tracked, JSON locale files (id, en) for description templates
-  custom_id_patterns.txt → optional, gitignored, one regex per line
   pyproject.toml        → pinned deps + ruff + mypy + pytest config
   Makefile              → all critical commands
   Dockerfile            → multi-stage Python 3.11-slim build
   docker-compose.yml    → AI service + backend network attach
-  CredChain_Python_postman_collection.json → endpoint testing collection
   .env / .env.docker / .env.example
   README.md
   AGENTS.md             → this file
@@ -88,12 +106,12 @@ All POST endpoints accept `files: list[UploadFile]` (multi-file batch). Hard cap
 
 | Method | Path | Purpose | Code |
 |---|---|---|---|
-| POST | `/extract` | Batch OCR + LaBSE embedding | 500100 |
-| POST | `/verify` | Batch cosine similarity + verdict + bilingual description | 500200 |
-| POST | `/extract-ids` | Batch extract document/registration IDs (regex-only) | 500300 |
-| GET | `/health` | Liveness + `models_loaded` flag | 500900 / 500950 |
+| POST | `/extract` | Gemini Files API extraction, returns `{raw_text, ids, embeddings}` | 500100 |
+| POST | `/verify` | Gemini direct upload + EmbeddingGemma similarity, returns `{similarity_score, similarity_percent, verdict, description}` | 500200 |
+| POST | `/extract-ids` | Gemini ID extraction, returns `{ids}` only | 500300 |
+| GET | `/health` | Liveness, returns `"healthy"` or `"model loading"` | 500900 / 500950 |
 
-Upload limit: 10 MB per file. Allowed MIME: `application/pdf`, `image/{jpeg,png,webp,tiff}`. `validate_files` enforces both limits before any processing.
+Upload limit: 10 MB per file. Allowed MIME: `application/pdf`, `image/{jpeg,png,webp,tiff}`. `validate_file` enforces both limits before any processing.
 
 ### Multi-file Response Envelope
 
@@ -102,12 +120,12 @@ Upload limit: 10 MB per file. Allowed MIME: `application/pdf`, `image/{jpeg,png,
   "code": 500100,
   "message": "Document(s) extracted successfully",
   "data": [
-    { "raw_text": "...", "embeddings": [...] },
+    { "raw_text": "...", "ids": [...], "embeddings": [...] },
     null,
-    { "raw_text": "...", "embeddings": [...] }
+    { "raw_text": "...", "ids": [...], "embeddings": [...] }
   ],
   "errors": {
-    "files.1": ["OCR failed: corrupted PDF"]
+    "files.1": ["Gemini extraction failed"]
   }
 }
 ```
@@ -117,9 +135,9 @@ Upload limit: 10 MB per file. Allowed MIME: `application/pdf`, `image/{jpeg,png,
 - Top-level `code` is the success code when ≥1 file succeeded; an error code when all failed.
 - Shape mirrors the Go backend's `{code, message, data, errors}` envelope — same wire contract.
 
-### `/verify` Metadata Blob (Option B)
+### `/verify` Metadata Blob
 
-`/verify` uses a single `metadata` JSON form field pairing each file with its stored data:
+`/verify` uses a single `metadata` JSON form field pairing each file with its stored embeddings:
 
 ```
 POST /verify
@@ -133,67 +151,77 @@ metadata: [
 
 `len(files) == len(metadata)` is required; mismatch returns HTTP 400 code `500241`. `parse_verify_metadata` in `routes.py` validates the JSON shape and raises `AppError` on malformed input.
 
-### Custom ID Patterns
+### Gemini Pipeline (Files API vs Direct Upload)
 
-`/extract-ids` uses regex-only extraction (no LLM). Built-in patterns cover Indonesian IDs (NIK, NPWP, NIP, NIM) and generic codes (hyphenated, grouped alnum, prefixed alnum, UUID, ULID).
+Two extraction paths in `app/gemini.py`:
 
-- Custom patterns are loaded from `CUSTOM_ID_PATTERNS_FILE` (default `./custom_id_patterns.txt`). File format: one regex per line, `#` for comments.
-- Invalid regex → service refuses to start (fail fast at lifespan startup).
-- `OVERRIDE_BUILTIN_ID_PATTERNS=true` skips built-in patterns entirely (custom-only mode).
-- Pattern ordering: custom first, then built-in (when enabled).
+- **Files API** (used by `/extract`): Upload files → poll until ACTIVE → generate content. Better for batch, supports larger files via Gemini's server-side processing.
+- **Direct upload** (used by `/verify` and `/extract-ids`): Bytes inlined in the prompt. Simpler per-file flow, no polling overhead.
 
-### Models Loaded Once via Lifespan
+`GeminiClient` wraps both with built-in retry logic: up to 3 attempts for 429/RESOURCE_EXHAUSTED errors, with configurable `RETRY_WAIT_SECONDS` delay.
 
-Two heavyweight models are loaded once via FastAPI `lifespan` and accessed in handlers via `Depends()`:
+### Models Loaded via Lifespan
 
-| Module | Purpose | Approx Size |
-|---|---|---|
-| EasyOCR | OCR fallback when PyMuPDF text extraction is insufficient | ~150 MB |
-| LaBSE (sentence-transformers) | multilingual embeddings for semantic similarity | ~1.8 GB |
+EmbeddingGemma (`google/embeddinggemma-300M`) is loaded once via FastAPI `lifespan` and accessed in handlers via `Depends(get_embedding_model)`. The Gemini client is initialized at startup and injected via `Depends(get_gemini_client)`.
 
-The lifespan handler sets `app.state.models_loaded = True` after both load successfully. `/health` returns code `500900` (loaded) or `500950` (not yet ready).
-
-Models ARE baked into the Docker image via a multi-stage build.
+The lifespan handler sets `app.state.models_loaded = True` after both initialize successfully. `/health` returns code `500900` (loaded, HTTP 200) or `500950` (not yet ready, HTTP 503).
 
 ### Single-Worker Concurrency
 
-Uvicorn runs with a single worker (`--workers 1`). LaBSE is CPU-bound and not thread-safe; running multiple workers would multiply memory usage by N without throughput gain.
+Uvicorn runs with a single worker (`--workers 1`). EmbeddingGemma is CPU-bound and not thread-safe; running multiple workers would multiply memory usage by N without throughput gain.
 
-**Consequence:** while one client invokes `/extract` or `/verify`, others wait on the LaBSE encoding step. Operators should size connection pool and request timeout accordingly. The Go backend should serialize calls to this service.
+**Consequence:** while one client invokes `/extract` or `/verify`, others wait on the encoding step. Operators should size connection pool and request timeout accordingly. The Go backend should serialize calls to this service.
 
-### OCR Fallback Chain (PyMuPDF → EasyOCR)
+### Gemini Prompts
 
-`app/ocr.py` extracts text using PyMuPDF first (fast, text-layer PDFs). Then `is_text_useful(text)` checks two heuristics:
+Extraction prompts are module-level constants in `app/prompts.py`:
 
-- text length ≥ 50 characters, AND
-- ≥ 80% of characters are printable
+- `PROMPT_EXTRACT_DOCUMENT` — extracts raw text + IDs, returns `{raw_text: str, ids: [{type: str, value: str}]}`
+- `PROMPT_EXTRACT_IDS` — extracts IDs only, returns `{ids: [{type: str, value: str}]}`
 
-If either fails, the page is re-processed via EasyOCR (slower, image-based). This handles scanned PDFs and image uploads without paying the EasyOCR cost for clean text PDFs.
+Gemini is configured with `response_mime_type="application/json"` for structured JSON output. Non-JSON responses are caught and returned as empty dicts (with a warning printed).
 
 ### Verdict Thresholds
 
-Verdict thresholds (named constants in `comparison.py`):
+Verdict thresholds are configurable via env vars (defined in `app/verdict.py` and `app/config.py`):
 
-| Verdict | Similarity Range |
-|---|---|
-| `tampered` | ≥ 0.95 (suspiciously near-perfect — likely copy with minor edits) |
-| `suspicious` | ≥ 0.75 |
-| `low_similarity` | ≥ 0.40 |
-| `not_similar` | < 0.40 |
+| Verdict | Default Threshold | Description |
+|---|---|---|
+| `tampered` | ≥ 0.95 | Suspiciously near-perfect — likely copy with minor edits |
+| `suspicious` | ≥ 0.75 | High similarity suggesting a derivative |
+| `low_similarity` | ≥ 0.55 | Some overlap but uncertain |
+| `not_similar` | < 0.55 | Unrelated documents |
 
-The verdict is computed from embedding cosine similarity alone.
+Env vars: `VERDICT_TAMPERED_THRESHOLD`, `VERDICT_SUSPICIOUS_THRESHOLD`, `VERDICT_LOW_SIMILARITY_THRESHOLD`.
+
+**Important:** Very high similarity (≥0.95) implies "tampered" because authentic re-issued documents always have natural OCR variance. A near-perfect match with a stored embedding suggests the same digital artifact was reused with minor edits.
+
+The verdict is computed from embedding cosine similarity alone (EmbeddingGemma). Similarity is formatted as `"XX.X%"` via `verdict.format_percent()`.
 
 ### Locale-Based Description Generation
 
-`/verify` returns a bilingual human-readable description for each verdict. Descriptions are rendered from `locales/{en,id}.json` templates — **no LLM call** for descriptions. This keeps `/verify` fast and deterministic.
+`/verify` returns a single-language human-readable description for each verdict (language resolved from `Accept-Language` header via i18n middleware). Descriptions are rendered from `locales/{en,id}.json` templates — **no LLM call** for descriptions. This keeps `/verify` fast and deterministic.
 
-`app/i18n.localize(key, lang, **vars)` resolves the template and substitutes variables. `app/description.build_description(verdict, similarity_percent)` orchestrates the lookup.
+`app/i18n.localize(key, lang, **vars)` resolves the template and substitutes variables. `app/description.build_description(verdict, similarity_percent, lang)` orchestrates the lookup.
+
+### i18n Middleware
+
+`main.py` registers an i18n middleware (mirrors Go backend pattern):
+
+```python
+@app.middleware("http")
+async def i18n_middleware(request, call_next):
+    accept_lang = request.headers.get("Accept-Language", "").strip()
+    lang = accept_lang.split(",")[0].split(";")[0].strip().lower()
+    request.state.lang = lang if lang in {"id", "en"} else "id"
+    return await call_next(request)
+```
+
+Supported languages: `id` (Indonesian, default), `en` (English). Unknown or missing `Accept-Language` falls back to `id`. Handlers read the resolved language via `get_lang(request)` → `request.state.lang`.
 
 ### Custom Env CSV Source
 
-`pydantic-settings 2.6.1` does not export `NoDecode`, which breaks list-of-string env parsing. `app/config.py` defines `_CsvEnvSettingsSource` and `_CsvDotEnvSettingsSource` that pre-split comma-separated values for `easyocr_langs` and `cors_allow_origins` before pydantic-settings sees them.
-
-When adding a new CSV env var, register it in both sources or pydantic will treat the raw string as a single-element list.
+`pydantic-settings 2.6.1` does not export `NoDecode`, which breaks list-of-string env parsing. `app/config.py` defines `_CsvEnvSettingsSource` and `_CsvDotEnvSettingsSource` that pre-split comma-separated values for `cors_allow_origins` before pydantic-settings sees them.
 
 ## Configuration / Env Vars
 
@@ -202,19 +230,22 @@ When adding a new CSV env var, register it in both sources or pydantic will trea
 | `FASTAPI_PORT` | `8081` | HTTP port |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `LOG_OUTPUT` | `stdout` | `stdout` or file path |
-| `MODEL_DIR` | `/models` | parent dir for model subdirs |
-| `EASYOCR_LANGS` | `id,en` | comma-separated languages |
-| `LOCALES_DIR` | `./locales` | parent dir for locale JSON files |
-| `CUSTOM_ID_PATTERNS_FILE` | `./custom_id_patterns.txt` | optional regex patterns file |
-| `OVERRIDE_BUILTIN_ID_PATTERNS` | `false` | `true` = skip built-in ID patterns |
-| `MAX_FILES_PER_REQUEST` | `100` | hard cap on multi-file upload |
-| `CORS_ALLOW_ORIGINS` | `*` | comma-separated origins |
+| `GEMINI_API_KEY` | — | Google Gemini API key (required) |
+| `EXTRACTION_MODEL` | `gemini-3.1-flash-lite` | Gemini model for extraction |
+| `RETRY_WAIT_SECONDS` | `60` | Delay between Gemini rate-limit retries |
+| `HF_TOKEN` | — | HuggingFace token for gated model access |
+| `EMBEDDING_MODEL_ID` | `google/embeddinggemma-300M` | HuggingFace model ID for embeddings |
+| `VERDICT_TAMPERED_THRESHOLD` | `0.95` | Cosine similarity ≥ this → tampered |
+| `VERDICT_SUSPICIOUS_THRESHOLD` | `0.75` | Cosine similarity ≥ this → suspicious |
+| `VERDICT_LOW_SIMILARITY_THRESHOLD` | `0.55` | Cosine similarity ≥ this → low_similarity |
+| `LOCALES_DIR` | `./locales` | Parent dir for locale JSON files |
+| `MAX_FILES_PER_REQUEST` | `100` | Hard cap on multi-file upload |
+| `CORS_ALLOW_ORIGINS` | `*` | Comma-separated origins |
 
 ## Testing
 
 - **Framework:** pytest 8.3.4 + pytest-asyncio 0.24.0 + httpx 0.28.1 (for FastAPI TestClient)
-- **Count:** ~107 tests across 13 test files. All mocked — no real model loads, no real network calls. Runs in <15s.
-- **Fixtures:** `tests/conftest.py` provides `mock_easyocr_reader`, `mock_embedding_model`.
+- **Fixtures:** `tests/conftest.py` provides mocked `embedding_model` and `gemini_client` dependencies.
 - **Coverage layout:** every `app/*.py` module has a matching `tests/test_*.py`.
 - **mypy:** strict mode on `app/`; relaxed on `tests/` (allows missing return type annotations on test functions).
 - **ruff config:** select `E,F,I,N,UP,B,SIM,RET,PT`; line-length 100; `B008` ignored in `app/routes.py` (FastAPI `Depends()` / `File()` defaults are idiomatic).
@@ -222,41 +253,14 @@ When adding a new CSV env var, register it in both sources or pydantic will trea
 
 When adding a new endpoint or module, add at least: one happy-path test, one validation-failure test, one downstream-failure test (mock the model raising), and one mypy-clean signature.
 
-## Tech Stack
-
-Pinned in `pyproject.toml`:
-
-| Layer | Tool | Version |
-|---|---|---|
-| Language | Python | ≥3.11, <3.13 |
-| Web framework | FastAPI | 0.115.5 |
-| ASGI server | uvicorn[standard] | 0.32.1 |
-| Multipart parser | python-multipart | 0.0.17 |
-| Validation | pydantic | 2.10.3 |
-| Settings | pydantic-settings | 2.6.1 |
-| PDF | PyMuPDF | 1.25.1 |
-| OCR | EasyOCR | 1.7.2 (id+en) |
-| Embeddings | sentence-transformers (LaBSE) | 3.3.1 |
-| ML backend | torch (CPU) | 2.5.1 |
-| Fuzzy match | rapidfuzz | 3.10.1 |
-| Image | Pillow | 11.0.0 |
-| Test | pytest | 8.3.4 |
-| Async test | pytest-asyncio | 0.24.0 |
-| HTTP test | httpx | 0.28.1 |
-| Lint | ruff | 0.8.4 |
-| Type check | mypy | 1.13.0 |
-
 ## Cross-Repo Integration
 
 - **`../CredChain_Golang/AGENTS.md`** — sole HTTP caller. The Go backend serializes requests to this service. Response envelope `{code, message, data, errors}` matches the Go format exactly.
-- **`../CredChain_React/AGENTS.md`** — never talks to this service directly. All AI flows go through the Go API.
 - **`../CredChain_Solidity/AGENTS.md`** — no integration; this service never touches the chain.
 
-Response codes use a 6-digit `AABBCC` format. This service owns category `50` (AI). The Go backend uses categories `10` (system), `20` (auth), `30` (user), `40` (credential). When the Go side surfaces a Python error to the frontend, it preserves the original `50xxxx` code so the React `CODE_TO_MESSAGE_KEY` map can look up the i18n key.
+Response codes use a 6-digit `AABBCC` format. This service owns category `50` (AI). The Go backend uses categories `10` (system), `20` (auth), `30` (user), `40` (credential). When the Go side surfaces a Python error to the frontend, it preserves the original `50xxxx` code.
 
-Locale files in `locales/{en,id}.json` provide the description templates rendered by `/verify`. Keep keys in lockstep with backend and frontend locale files — there is no automated sync check on the Python side, so the Go and React side checks act as the canary.
-
-**Wire format change (2026-05-31):** `/extract` no longer returns `extracted_fields`. `/verify` no longer accepts `metadata[].stored_fields` and no longer returns `field_comparison` or `processing`. Verdict strings (`tampered`, `suspicious`, `low_similarity`, `not_similar`) are now lowercase. The Go backend must be updated separately to align — tracked in a Go-side spec.
+Locale files in `locales/{en,id}.json` provide the description templates rendered by `/verify`. Keep keys in lockstep with backend locale files.
 
 ## Deployment
 
@@ -264,16 +268,14 @@ Locale files in `locales/{en,id}.json` provide the description templates rendere
 
 Before pushing, run the repo's canonical verification command and confirm it passes:
 
-- `CredChain_Golang`: `go test ./... && go vet ./... && gofmt -l .` (last must produce zero output)
-- `CredChain_Solidity`: `npx hardhat compile && npx hardhat test`
-- `CredChain_Python`: `make lint && make typecheck && make test`
-- `CredChain_React`: `npm run lint && npm run build && npm run test && npm run check-locales`
+```bash
+make lint && make typecheck && make test
+```
 
 ## See Also
 
 - `README.md` — quick-start for human contributors
 - `Makefile` — canonical commands
-- `CredChain_Python_postman_collection.json` — endpoint testing collection
 - `pyproject.toml` — frozen dependency pins + tool config
 - `../AGENTS.md` (workspace root, uncommitted) — multi-repo reference
 - `../CredChain_Golang/AGENTS.md` — backend contract reference
