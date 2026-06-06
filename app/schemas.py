@@ -41,8 +41,3 @@ class VerifyMetadataItem(BaseModel):
 class ExtractIdsData(BaseModel):
     """Payload returned from POST /extract-ids. ID-only, no raw_text."""
     ids: list[dict[str, str]]
-
-
-class HealthData(BaseModel):
-    """Payload returned from GET /health."""
-    message: str

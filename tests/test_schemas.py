@@ -5,7 +5,6 @@ from typing import Any
 from app.schemas import (
     ExtractData,
     ExtractIdsData,
-    HealthData,
     Response,
     VerifyData,
     VerifyMetadataItem,
@@ -68,12 +67,6 @@ class TestExtractIdsData:
     def test_empty_ids(self):
         d = ExtractIdsData(ids=[])
         assert d.ids == []
-
-
-class TestHealthData:
-    def test_valid_data(self):
-        d = HealthData(message="healthy")
-        assert d.message == "healthy"
 
 
 class TestVerifyMetadataItem:

@@ -260,6 +260,4 @@ async def health(request: Request) -> JSONResponse:
     code = codes.CODE_AI_HEALTH_SUCCESS if models_loaded else codes.CODE_AI_HEALTH_NOT_READY
     http_status = 200 if models_loaded else 503
     message = "healthy" if models_loaded else "model loading"
-    data = schemas.HealthData(message=message)
-    body = schemas.Response(code=code, message=message, data=data).model_dump(exclude_none=True)
-    return JSONResponse(status_code=http_status, content=body)
+    return JSONResponse(status_code=http_status, content={"code": code, "message": message})
