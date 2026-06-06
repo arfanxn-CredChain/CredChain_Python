@@ -41,37 +41,35 @@ def validate_file(file: UploadFile) -> tuple[bytes, str]:
     return contents, file.content_type
 
 
-def parse_verify_metadata(metadata_raw: str, expected_len: int) -> list[schemas.VerifyMetadataItem]:
+def parse_compared_embeddings(raw: str, expected_len: int) -> list[list[float]]:
     try:
-        parsed = json.loads(metadata_raw)
+        parsed: list = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise AppError(
-            codes.CODE_AI_VERIFY_INVALID_INPUT, errors={"metadata": [str(exc)]}
+            codes.CODE_AI_VERIFY_INVALID_INPUT,
+            errors={"compared_embeddings": [str(exc)]},
         ) from exc
     if not isinstance(parsed, list):
         raise AppError(
             codes.CODE_AI_VERIFY_INVALID_INPUT,
-            errors={"metadata": ["Must be a JSON array"]},
+            errors={"compared_embeddings": ["Must be a JSON array"]},
         )
     if len(parsed) != expected_len:
         raise AppError(
             codes.CODE_AI_VERIFY_INVALID_INPUT,
-            errors={
-                "metadata": [
-                    f"Length mismatch: {len(parsed)} vs {expected_len}"
-                ]
-            },
+            errors={"compared_embeddings": [
+                f"Length mismatch: {len(parsed)} vs {expected_len}"
+            ]},
         )
-    items: list[schemas.VerifyMetadataItem] = []
-    for i, raw in enumerate(parsed):
-        try:
-            items.append(schemas.VerifyMetadataItem(**raw))
-        except Exception as exc:
+    result: list[list[float]] = []
+    for i, v in enumerate(parsed):
+        if not isinstance(v, list):
             raise AppError(
                 codes.CODE_AI_VERIFY_INVALID_INPUT,
-                errors={f"metadata.{i}": [str(exc)]},
-            ) from exc
-    return items
+                errors={f"compared_embeddings.{i}": ["Must be a list of floats"]},
+            )
+        result.append([float(x) for x in v])
+    return result
 
 
 def validate_files(files: list[UploadFile]) -> None:
@@ -159,19 +157,19 @@ async def extract(
 @router.post("/verify", response_model=schemas.Response[list[schemas.VerifyData | None]])  # type: ignore[no-untyped-def]
 async def verify(
     request: Request,
-    files: list[UploadFile] = File(...),
-    metadata: str = Form(...),
+    reference_files: list[UploadFile] = File(...),
+    compared_embeddings: str = Form(...),
     gemini_client=Depends(get_gemini_client),
     embed_model=Depends(get_embedding_model),
 ) -> schemas.Response[list[schemas.VerifyData | None]]:
-    validate_files(files)
-    items = parse_verify_metadata(metadata, expected_len=len(files))
+    validate_files(reference_files)
+    stored = parse_compared_embeddings(compared_embeddings, expected_len=len(reference_files))
     lang = get_lang(request)
     data: list[schemas.VerifyData | None] = []
     errors: dict[str, list[str]] = {}
     success_count = 0
 
-    for i, (file, item) in enumerate(zip(files, items, strict=True)):
+    for i, (file, stored_embedding) in enumerate(zip(reference_files, stored, strict=True)):
         try:
             file_bytes, mime_type = validate_file(file)
             raw = await asyncio.to_thread(
@@ -180,10 +178,10 @@ async def verify(
             raw_text = raw.get("raw_text", "")
             if not raw_text:
                 data.append(None)
-                errors[f"files.{i}"] = ["No text extracted from document"]
+                errors[f"reference_files.{i}"] = ["No text extracted from document"]
                 continue
             embeddings_list = await asyncio.to_thread(embeddings.encode, embed_model, raw_text)
-            similarity = embeddings.cosine_similarity(embeddings_list, item.stored_embeddings)
+            similarity = embeddings.cosine_similarity(embeddings_list, stored_embedding)
             verdict_label = verdict.verdict_for(similarity)
             sim_percent = verdict.format_percent(similarity)
             desc = desc_module.build_description(verdict_label, sim_percent, lang)
@@ -194,20 +192,20 @@ async def verify(
             success_count += 1
         except AppError as exc:
             data.append(None)
-            errors[f"files.{i}"] = [exc.message]
+            errors[f"reference_files.{i}"] = [exc.message]
         except Exception:
             data.append(None)
             log.exception(
                 "unhandled per-file error",
                 extra={"extra_fields": {"file_index": i, "filename": file.filename}},
             )
-            errors[f"files.{i}"] = ["Internal error processing file"]
+            errors[f"reference_files.{i}"] = ["Internal error processing file"]
 
     code = codes.CODE_AI_VERIFY_SUCCESS if success_count > 0 else codes.CODE_AI_VERIFY_OCR_FAILED
     message = (
         "Verification(s) completed"
-        if success_count == len(files)
-        else f"{success_count}/{len(files)} files verified"
+        if success_count == len(reference_files)
+        else f"{success_count}/{len(reference_files)} files verified"
     )
     return schemas.Response(code=code, message=message, data=data, errors=errors or None)
 

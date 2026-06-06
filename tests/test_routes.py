@@ -102,7 +102,7 @@ class TestVerifyEndpoint:
         mock_model = MagicMock()
         mock_model.encode.return_value = [0.1, 0.2, 0.3]
 
-        metadata = json.dumps([{"stored_embeddings": [0.1, 0.2, 0.3]}])
+        compared = json.dumps([[0.1, 0.2, 0.3]])
 
         with (
             patch.object(client.app.state, "gemini_client", mock_gc),
@@ -110,8 +110,8 @@ class TestVerifyEndpoint:
         ):
             response = client.post(
                 "/verify",
-                files=[("files", ("test.pdf", sample_pdf_bytes, "application/pdf"))],
-                data={"metadata": metadata},
+                files=[("reference_files", ("test.pdf", sample_pdf_bytes, "application/pdf"))],
+                data={"compared_embeddings": compared},
             )
 
         assert response.status_code == 200
@@ -123,12 +123,12 @@ class TestVerifyEndpoint:
         assert "description" in body["data"][0]
 
     def test_verify_metadata_mismatch(self, client, sample_pdf_bytes):
-        metadata = json.dumps([{"stored_embeddings": [0.1]}, {"stored_embeddings": [0.2]}])
+        compared = json.dumps([[0.1], [0.2]])
 
         response = client.post(
             "/verify",
-            files=[("files", ("test.pdf", sample_pdf_bytes, "application/pdf"))],
-            data={"metadata": metadata},
+            files=[("reference_files", ("test.pdf", sample_pdf_bytes, "application/pdf"))],
+            data={"compared_embeddings": compared},
         )
 
         assert response.status_code == 400

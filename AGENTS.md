@@ -135,21 +135,18 @@ Upload limit: 10 MB per file. Allowed MIME: `application/pdf`, `image/{jpeg,png,
 - Top-level `code` is the success code when ≥1 file succeeded; an error code when all failed.
 - Shape mirrors the Go backend's `{code, message, data, errors}` envelope — same wire contract.
 
-### `/verify` Metadata Blob
+### `/verify` Compared Embeddings
 
-`/verify` uses a single `metadata` JSON form field pairing each file with its stored embeddings:
+`/verify` accepts `reference_files` (multipart) and `compared_embeddings` (JSON string of float arrays). Each file pairs positionally with one embedding array:
 
 ```
 POST /verify
-files: <file0.pdf>
-files: <file1.pdf>
-metadata: [
-  {"stored_embeddings": [0.1, ...]},
-  {"stored_embeddings": [0.3, ...]}
-]
+reference_files: <file0.pdf>
+reference_files: <file1.pdf>
+compared_embeddings: [[0.1, ...], [0.3, ...]]
 ```
 
-`len(files) == len(metadata)` is required; mismatch returns HTTP 400 code `500241`. `parse_verify_metadata` in `routes.py` validates the JSON shape and raises `AppError` on malformed input.
+`len(reference_files) == len(compared_embeddings)` is required; mismatch returns HTTP 400 code `500241`. `parse_compared_embeddings` in `routes.py` validates the JSON shape and raises `AppError` on malformed input.
 
 ### Gemini Pipeline (Files API vs Direct Upload)
 

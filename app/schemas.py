@@ -33,11 +33,6 @@ class VerifyData(BaseModel):
     description: str
 
 
-class VerifyMetadataItem(BaseModel):
-    """Single item in the /verify metadata array."""
-    stored_embeddings: list[float]
-
-
 class ExtractIdsData(BaseModel):
     """Payload returned from POST /extract-ids. ID-only, no raw_text."""
     ids: list[dict[str, str]]

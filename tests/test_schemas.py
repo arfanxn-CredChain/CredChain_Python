@@ -7,7 +7,6 @@ from app.schemas import (
     ExtractIdsData,
     Response,
     VerifyData,
-    VerifyMetadataItem,
 )
 
 
@@ -67,9 +66,3 @@ class TestExtractIdsData:
     def test_empty_ids(self):
         d = ExtractIdsData(ids=[])
         assert d.ids == []
-
-
-class TestVerifyMetadataItem:
-    def test_valid(self):
-        m = VerifyMetadataItem(stored_embeddings=[0.1, 0.2, 0.3])
-        assert m.stored_embeddings == [0.1, 0.2, 0.3]
