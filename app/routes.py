@@ -174,6 +174,7 @@ async def extract(
     summary="Batch similarity verification against stored embeddings",
 )
 async def verify(
+    request: Request,
     files: list[UploadFile] = File(...),
     metadata: str = Form(...),
     reader: easyocr.Reader = Depends(get_easyocr),
@@ -192,12 +193,13 @@ async def verify(
             similarity = embeddings.cosine_similarity(embeddings_list, item.stored_embeddings)
             verdict = comparison.verdict_for(similarity)
             sim_percent = comparison.format_percent(similarity)
-            desc = desc_module.build_description(verdict, sim_percent)
+            lang = request.headers.get("Accept-Language", "id")
+            desc = desc_module.build_description(verdict, sim_percent, lang)
             data.append(schemas.VerifyData(
                 similarity_score=similarity,
                 similarity_percent=sim_percent,
                 verdict=verdict,
-                description=schemas.VerifyDescription(id=desc["id"], en=desc["en"]),
+                description=desc,
             ))
             success_count += 1
         except AppError as exc:
