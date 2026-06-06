@@ -20,9 +20,9 @@ class Response(BaseModel, Generic[T]):
 
 class ExtractData(BaseModel):
     """Payload returned from POST /extract."""
-    raw_text: str
+    text: str
     ids: list[dict[str, str]]
-    embeddings: list[float]
+    embedding: list[float]
 
 
 class VerifyData(BaseModel):

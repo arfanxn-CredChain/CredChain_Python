@@ -76,7 +76,7 @@ class TestExtractEndpoint:
         body = response.json()
         assert body["code"] == 500100
         assert len(body["data"]) == 1
-        assert body["data"][0]["raw_text"] == "hello world"
+        assert body["data"][0]["text"] == "hello world"
 
     def test_extract_failure_per_file(self, client, sample_pdf_bytes):
         mock_gc = MagicMock()

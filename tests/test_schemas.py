@@ -30,16 +30,16 @@ class TestResponse:
 class TestExtractData:
     def test_valid_data(self):
         d = ExtractData(
-            raw_text="hello",
+            text="hello",
             ids=[{"type": "passport", "value": "X123"}],
-            embeddings=[0.1, 0.2],
+            embedding=[0.1, 0.2],
         )
-        assert d.raw_text == "hello"
+        assert d.text == "hello"
         assert d.ids == [{"type": "passport", "value": "X123"}]
-        assert d.embeddings == [0.1, 0.2]
+        assert d.embedding == [0.1, 0.2]
 
     def test_ids_can_be_empty(self):
-        d = ExtractData(raw_text="hello", ids=[], embeddings=[0.1])
+        d = ExtractData(text="hello", ids=[], embedding=[0.1])
         assert d.ids == []
 
 

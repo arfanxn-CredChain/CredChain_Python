@@ -106,7 +106,7 @@ All POST endpoints accept `files: list[UploadFile]` (multi-file batch). Hard cap
 
 | Method | Path | Purpose | Code |
 |---|---|---|---|
-| POST | `/extract` | Gemini Files API extraction, returns `{raw_text, ids, embeddings}` | 500100 |
+| POST | `/extract` | Gemini Files API extraction, returns `{text, ids, embedding}` | 500100 |
 | POST | `/verify` | Gemini direct upload + EmbeddingGemma similarity, returns `{similarity_score, similarity_percent, verdict, description}` | 500200 |
 | POST | `/extract-ids` | Gemini ID extraction, returns `{ids}` only | 500300 |
 | GET | `/health` | Liveness, returns `"healthy"` or `"model loading"` | 500900 / 500950 |
@@ -120,9 +120,9 @@ Upload limit: 10 MB per file. Allowed MIME: `application/pdf`, `image/{jpeg,png,
   "code": 500100,
   "message": "Document(s) extracted successfully",
   "data": [
-    { "raw_text": "...", "ids": [...], "embeddings": [...] },
+    { "text": "...", "ids": [...], "embedding": [...] },
     null,
-    { "raw_text": "...", "ids": [...], "embeddings": [...] }
+    { "text": "...", "ids": [...], "embedding": [...] }
   ],
   "errors": {
     "files.1": ["Gemini extraction failed"]

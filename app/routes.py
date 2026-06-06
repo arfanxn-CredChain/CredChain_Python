@@ -135,7 +135,7 @@ async def extract(
                     raw_text = raw.get("raw_text", "")
                     ids = raw.get("ids", [])
                     emb = await asyncio.to_thread(embeddings.encode, embed_model, raw_text)
-                    data[i] = schemas.ExtractData(raw_text=raw_text, ids=ids, embeddings=emb)
+                    data[i] = schemas.ExtractData(text=raw_text, ids=ids, embedding=emb)
                     success_count += 1
                 else:
                     errors.setdefault(f"files.{i}", []).append("Gemini extraction failed")
