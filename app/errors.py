@@ -8,6 +8,7 @@ DEFAULT_MESSAGES: dict[int, str] = {
     codes.CODE_AI_INTERNAL: "Internal server error",
     codes.CODE_AI_EXTRACT_SUCCESS: "Document extracted successfully",
     codes.CODE_AI_EXTRACT_OCR_FAILED: "OCR failed during extraction",
+    codes.CODE_AI_GEMINI_FAILED: "Gemini API request failed",
     codes.CODE_AI_VERIFY_SUCCESS: "Verification completed",
     codes.CODE_AI_VERIFY_INVALID_INPUT: "Invalid stored_embeddings",
     codes.CODE_AI_VERIFY_OCR_FAILED: "OCR failed during verification",

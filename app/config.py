@@ -12,27 +12,18 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-_CSV_FIELDS: frozenset[str] = frozenset({"easyocr_langs", "cors_allow_origins"})
+_CSV_FIELDS: frozenset[str] = frozenset({"cors_allow_origins"})
 
 
 def _split_csv_if_csv_field(
     field_name: str, value: Any
 ) -> tuple[Any, bool]:
-    """Return (parsed_value, was_csv). When the field is a known CSV field
-    and value is a string, split on commas. Otherwise return value unchanged.
-    """
     if field_name in _CSV_FIELDS and isinstance(value, str):
         return [item.strip() for item in value.split(",") if item.strip()], True
     return value, False
 
 
 class _CsvEnvSettingsSource(EnvSettingsSource):
-    """EnvSettingsSource that splits comma-separated values for known
-    CSV fields instead of attempting JSON decoding (which fails on bare
-    strings like "id,en"). pydantic-settings 2.6.1 does not export
-    NoDecode, so we override prepare_field_value directly.
-    """
-
     def prepare_field_value(
         self,
         field_name: str,
@@ -47,8 +38,6 @@ class _CsvEnvSettingsSource(EnvSettingsSource):
 
 
 class _CsvDotEnvSettingsSource(DotEnvSettingsSource):
-    """DotEnvSettingsSource counterpart with the same CSV bypass."""
-
     def prepare_field_value(
         self,
         field_name: str,
@@ -63,14 +52,6 @@ class _CsvDotEnvSettingsSource(DotEnvSettingsSource):
 
 
 class Settings(BaseSettings):
-    """Type-validated settings loaded from environment variables.
-
-    All fields have sensible defaults; only LOG_OUTPUT and MODEL_DIR
-    typically need overriding in production. Comma-separated env vars
-    (EASYOCR_LANGS, CORS_ALLOW_ORIGINS) are split into lists by custom
-    settings sources before reaching pydantic's JSON decoder.
-    """
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -82,19 +63,23 @@ class Settings(BaseSettings):
     log_level: str = "info"
     log_output: str = "stdout"
 
-    model_dir: str = "/models"
-    easyocr_langs: list[str] = Field(default_factory=lambda: ["id", "en"])
-    ocr_max_image_pixels: int = 2_000_000
+    gemini_api_key: str = ""
+    extraction_model: str = "gemini-3.1-flash-lite"
+    retry_wait_seconds: int = 60
+
+    hf_token: str = ""
+    embedding_model_id: str = "google/embeddinggemma-300M"
+
+    verdict_tampered_threshold: float = 0.95
+    verdict_suspicious_threshold: float = 0.75
+    verdict_low_similarity_threshold: float = 0.55
 
     locales_dir: str = "./locales"
-
-    custom_id_patterns_file: str = "./custom_id_patterns.txt"
-    override_builtin_id_patterns: bool = False
     max_files_per_request: int = 100
 
     cors_allow_origins: list[str] = Field(default_factory=lambda: ["*"])
 
-    @field_validator("easyocr_langs", "cors_allow_origins", mode="before")
+    @field_validator("cors_allow_origins", mode="before")
     @classmethod
     def split_csv(cls, v: str | list[str]) -> list[str]:
         if isinstance(v, str):
