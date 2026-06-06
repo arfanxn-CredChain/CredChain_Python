@@ -30,7 +30,7 @@ def test_all_4_verdict_keys_present():
 
 
 def test_placeholders_are_known():
-    known = {"percent", "matched", "mismatched", "match_count", "total_count"}
+    known = {"percent"}
     pattern = re.compile(r"\{(\w+)\}")
     for lang in ("id", "en"):
         for key, template in i18n._LOCALES[lang].items():
@@ -38,30 +38,19 @@ def test_placeholders_are_known():
             unknown = placeholders - known
             assert not unknown, f"{lang}/{key}: unknown placeholders {unknown}"
 
-
 def test_localize_returns_formatted_string():
     out = i18n.localize(
         "verdict.tampered", "id",
         percent="91.0%",
-        matched="name, year",
-        mismatched="dob",
-        match_count=2,
-        total_count=3,
     )
     assert "91.0%" in out
-    assert "name, year" in out
-    assert "TAMPERED" in out
-
+    assert "kemiripan" in out
 
 def test_localize_unknown_lang_raises():
     with pytest.raises(KeyError):
-        i18n.localize("verdict.tampered", "fr",
-                      percent="0%", matched="-", mismatched="-",
-                      match_count=0, total_count=0)
-
+        i18n.localize("verdict.tampered", "fr", percent="0%")
 
 def test_localize_unknown_key_raises():
     with pytest.raises(KeyError):
-        i18n.localize("verdict.unknown", "id",
-                      percent="0%", matched="-", mismatched="-",
-                      match_count=0, total_count=0)
+        i18n.localize("verdict.unknown", "id", percent="0%")
+

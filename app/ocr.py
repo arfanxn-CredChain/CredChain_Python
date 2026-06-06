@@ -2,11 +2,14 @@
 image-only PDFs and standalone images."""
 
 import string
+from io import BytesIO
 from typing import TYPE_CHECKING
 
 import fitz
+from PIL import Image
 
 from app import codes
+from app.config import settings
 from app.errors import AppError
 
 if TYPE_CHECKING:
@@ -93,6 +96,26 @@ def _extract_from_pdf(reader: "easyocr.Reader", file_bytes: bytes) -> str:
     return "\n".join([*direct_chunks, *fallback_chunks]).strip()[:MAX_OCR_TEXT_LENGTH]
 
 
+def _resize_if_needed(image_bytes: bytes) -> bytes:
+    """Downscale images larger than settings.ocr_max_image_pixels.
+
+    Uses LANCZOS resampling for readable text preservation. Returns the
+    original bytes unmodified when already within the limit.
+    """
+    img = Image.open(BytesIO(image_bytes))
+    w, h = img.size
+    if w * h <= settings.ocr_max_image_pixels:
+        return image_bytes
+    ratio = (settings.ocr_max_image_pixels / (w * h)) ** 0.5
+    new_w, new_h = int(w * ratio), int(h * ratio)
+    resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    buf = BytesIO()
+    resized.save(buf, format="PNG")
+    buf.seek(0)
+    return buf.read()
+
+
 def _easyocr_to_text(reader: "easyocr.Reader", image_bytes: bytes) -> str:
-    fragments = reader.readtext(image_bytes)
+    resized = _resize_if_needed(image_bytes)
+    fragments = reader.readtext(resized)
     return " ".join(frag[1] for frag in fragments).strip()[:MAX_OCR_TEXT_LENGTH]

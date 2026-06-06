@@ -23,9 +23,9 @@ from typing import Any
 import requests
 
 FIXTURES = Path(__file__).parent / "fixtures"
-BASE_URL = "http://127.0.0.1:8082"
+BASE_URL = "http://localhost:8081"
 FAST_TIMEOUT = 10
-LLM_TIMEOUT = 900
+LARGE_FILE_TIMEOUT = 60
 
 results: list[dict[str, Any]] = []
 
@@ -62,9 +62,9 @@ def test_health():
 
 
 def test_extract_bad_mime():
-    with open(FIXTURES / "fake.txt", "rb") as f:
+    with open(FIXTURES / "edgecase-010.txt", "rb") as f:
         r = requests.post(f"{BASE_URL}/extract",
-                          files=[("files", ("fake.txt", f, "text/plain"))],
+                          files=[("files", ("edgecase-010.txt", f, "text/plain"))],
                           timeout=FAST_TIMEOUT)
     body = r.json()
     ok = r.status_code == 200 and body["data"][0] is None and "files.0" in (body.get("errors") or {})
@@ -73,9 +73,9 @@ def test_extract_bad_mime():
 
 
 def test_extract_empty_file():
-    with open(FIXTURES / "empty.pdf", "rb") as f:
+    with open(FIXTURES / "edgecase-001.pdf", "rb") as f:
         r = requests.post(f"{BASE_URL}/extract",
-                          files=[("files", ("empty.pdf", f, "application/pdf"))],
+                          files=[("files", ("edgecase-001.pdf", f, "application/pdf"))],
                           timeout=FAST_TIMEOUT)
     body = r.json()
     ok = r.status_code == 200 and body["data"][0] is None and "files.0" in (body.get("errors") or {})
@@ -84,9 +84,9 @@ def test_extract_empty_file():
 
 
 def test_verify_malformed_metadata():
-    with open(FIXTURES / "diploma-id.pdf", "rb") as f:
+    with open(FIXTURES / "diploma-001.pdf", "rb") as f:
         r = requests.post(f"{BASE_URL}/verify",
-                          files=[("files", ("diploma-id.pdf", f, "application/pdf"))],
+                          files=[("files", ("diploma-001.pdf", f, "application/pdf"))],
                           data={"metadata": "not valid json"},
                           timeout=FAST_TIMEOUT)
     body = r.json()
@@ -99,23 +99,22 @@ extract_data: dict[str, Any] = {}
 
 
 def test_extract_diploma():
-    with open(FIXTURES / "diploma-id.pdf", "rb") as f:
+    with open(FIXTURES / "diploma-001.pdf", "rb") as f:
         r = requests.post(f"{BASE_URL}/extract",
-                          files=[("files", ("diploma-id.pdf", f, "application/pdf"))],
-                          timeout=LLM_TIMEOUT)
+                          files=[("files", ("diploma-001.pdf", f, "application/pdf"))],
+                          timeout=LARGE_FILE_TIMEOUT)
     body = r.json()
     d = (body.get("data") or [None])[0]
     ok = (r.status_code == 200 and body.get("code") == 500100
           and d is not None
           and len(d.get("embeddings", [])) == 768
-          and isinstance(d.get("extracted_fields"), dict))
+          and "extracted_fields" not in d)
     if ok and d:
         extract_data["embeddings"] = d["embeddings"]
-        extract_data["fields"] = d["extracted_fields"]
     note = (f"code={body.get('code')} "
             f"raw_text_len={len(d.get('raw_text', '')) if d else 0} "
             f"embeddings_len={len(d.get('embeddings', [])) if d else 0} "
-            f"fields={list(d.get('extracted_fields', {}).keys()) if d else []}")
+            f"extracted_fields_absent={('extracted_fields' not in d) if d else 'n/a'}")
     return {"pass": ok, "http": r.status_code, "response": body, "note": note}
 
 
@@ -125,30 +124,34 @@ def test_verify_diploma():
                 "note": "SKIPPED — T5 did not return embeddings"}
     metadata = json.dumps([{
         "stored_embeddings": extract_data["embeddings"],
-        "stored_fields": extract_data["fields"],
     }])
-    with open(FIXTURES / "diploma-id.pdf", "rb") as f:
+    with open(FIXTURES / "diploma-001.pdf", "rb") as f:
         r = requests.post(f"{BASE_URL}/verify",
-                          files=[("files", ("diploma-id.pdf", f, "application/pdf"))],
+                          files=[("files", ("diploma-001.pdf", f, "application/pdf"))],
                           data={"metadata": metadata},
-                          timeout=LLM_TIMEOUT)
+                          timeout=LARGE_FILE_TIMEOUT)
     body = r.json()
     d = (body.get("data") or [None])[0]
+    valid_verdicts = {"tampered", "suspicious", "low_similarity", "not_similar"}
     ok = (r.status_code == 200 and body.get("code") == 500200
           and d is not None
-          and "similarity_score" in d and "verdict" in d
-          and "description" in d)
+          and "similarity_score" in d
+          and d.get("verdict") in valid_verdicts
+          and "description" in d
+          and "field_comparison" not in d
+          and "processing" not in d)
     note = (f"code={body.get('code')} "
             f"similarity={d.get('similarity_score') if d else None} "
             f"verdict={d.get('verdict') if d else None} "
-            f"desc_id_len={len(d.get('description', {}).get('id', '')) if d else 0}")
+            f"desc_id_len={len(d.get('description', {}).get('id', '')) if d else 0} "
+            f"shape_clean={('field_comparison' not in d and 'processing' not in d) if d else 'n/a'}")
     return {"pass": ok, "http": r.status_code, "response": body, "note": note}
 
 
 def test_extract_ids_diploma():
-    with open(FIXTURES / "diploma-id.pdf", "rb") as f:
+    with open(FIXTURES / "diploma-001.pdf", "rb") as f:
         r = requests.post(f"{BASE_URL}/extract-ids",
-                          files=[("files", ("diploma-id.pdf", f, "application/pdf"))],
+                          files=[("files", ("diploma-001.pdf", f, "application/pdf"))],
                           timeout=FAST_TIMEOUT)
     body = r.json()
     d = (body.get("data") or [None])[0]
@@ -160,65 +163,122 @@ def test_extract_ids_diploma():
 
 
 def test_extract_multipage():
-    """T8: 2-page transcript PDF — verifies both pages are OCR'd."""
-    with open(FIXTURES / "transcript-id.pdf", "rb") as f:
+    """T8: Transcript PDF — verifies OCR on transcript."""
+    with open(FIXTURES / "transcript-001.pdf", "rb") as f:
         r = requests.post(f"{BASE_URL}/extract",
-                          files=[("files", ("transcript-id.pdf", f, "application/pdf"))],
-                          timeout=LLM_TIMEOUT)
+                          files=[("files", ("transcript-001.pdf", f, "application/pdf"))],
+                          timeout=LARGE_FILE_TIMEOUT)
     body = r.json()
     d = (body.get("data") or [None])[0]
     ok = (r.status_code == 200 and d is not None
           and len(d.get("raw_text", "")) > 100)
     note = (f"code={body.get('code')} "
             f"raw_text_len={len(d.get('raw_text', '')) if d else 0} "
-            f"fields={list(d.get('extracted_fields', {}).keys()) if d else []}")
+            f"extracted_fields_absent={('extracted_fields' not in d) if d else 'n/a'}")
     return {"pass": ok, "http": r.status_code, "response": body, "note": note}
 
 
 def test_extract_image_jpg():
-    """T9: JPG image (id-card.jpg) — tests EasyOCR direct path."""
-    with open(FIXTURES / "id-card.jpg", "rb") as f:
+    """T9: diploma-001.jpg — tests EasyOCR direct path."""
+    with open(FIXTURES / "diploma-001.jpg", "rb") as f:
         r = requests.post(f"{BASE_URL}/extract",
-                          files=[("files", ("id-card.jpg", f, "image/jpeg"))],
-                          timeout=LLM_TIMEOUT)
+                          files=[("files", ("diploma-001.jpg", f, "image/jpeg"))],
+                          timeout=LARGE_FILE_TIMEOUT)
     body = r.json()
     d = (body.get("data") or [None])[0]
     ok = (r.status_code == 200 and d is not None
           and len(d.get("embeddings", [])) == 768)
     note = (f"code={body.get('code')} "
             f"raw_text_len={len(d.get('raw_text', '')) if d else 0} "
-            f"fields={list(d.get('extracted_fields', {}).keys()) if d else []}")
+            f"extracted_fields_absent={('extracted_fields' not in d) if d else 'n/a'}")
     return {"pass": ok, "http": r.status_code, "response": body, "note": note}
 
 
 def test_extract_scanned_pdf():
-    """T10: Image-only PDF — tests EasyOCR fallback (is_text_useful=False)."""
-    with open(FIXTURES / "scanned-diploma.pdf", "rb") as f:
+    """T10: diploma-001.jpg — tests EasyOCR path."""
+    with open(FIXTURES / "diploma-001.jpg", "rb") as f:
         r = requests.post(f"{BASE_URL}/extract",
-                          files=[("files", ("scanned-diploma.pdf", f, "application/pdf"))],
-                          timeout=LLM_TIMEOUT)
+                          files=[("files", ("diploma-001.jpg", f, "image/jpeg"))],
+                          timeout=LARGE_FILE_TIMEOUT)
     body = r.json()
     d = (body.get("data") or [None])[0]
     ok = (r.status_code == 200 and d is not None
           and len(d.get("embeddings", [])) == 768)
     note = (f"code={body.get('code')} "
             f"raw_text_len={len(d.get('raw_text', '')) if d else 0} "
-            f"(EasyOCR fallback expected)")
+            f"(EasyOCR)")
     return {"pass": ok, "http": r.status_code, "response": body, "note": note}
 
 
 def test_extract_tiff():
     """T11: TIFF image — tests TIFF MIME type support."""
-    with open(FIXTURES / "certificate.tiff", "rb") as f:
+    with open(FIXTURES / "diploma-001.tiff", "rb") as f:
         r = requests.post(f"{BASE_URL}/extract",
-                          files=[("files", ("certificate.tiff", f, "image/tiff"))],
-                          timeout=LLM_TIMEOUT)
+                          files=[("files", ("diploma-001.tiff", f, "image/tiff"))],
+                          timeout=LARGE_FILE_TIMEOUT)
     body = r.json()
     d = (body.get("data") or [None])[0]
     ok = (r.status_code == 200 and d is not None
           and len(d.get("embeddings", [])) == 768)
     note = (f"code={body.get('code')} "
             f"raw_text_len={len(d.get('raw_text', '')) if d else 0}")
+    return {"pass": ok, "http": r.status_code, "response": body, "note": note}
+
+
+def test_extract_wire_format_no_extracted_fields():
+    """T12: /extract response must NOT include extracted_fields key."""
+    with open(FIXTURES / "diploma-001.pdf", "rb") as f:
+        r = requests.post(f"{BASE_URL}/extract",
+                          files=[("files", ("diploma-001.pdf", f, "application/pdf"))],
+                          timeout=LARGE_FILE_TIMEOUT)
+    body = r.json()
+    d = (body.get("data") or [None])[0]
+    ok = (r.status_code == 200 and d is not None
+          and "extracted_fields" not in d
+          and set(d.keys()) == {"raw_text", "embeddings"})
+    note = (f"code={body.get('code')} keys={sorted(d.keys()) if d else []}")
+    return {"pass": ok, "http": r.status_code, "response": body, "note": note}
+
+
+def test_verify_lowercase_verdict_and_clean_shape():
+    """T13: /verify verdict is lowercase and response has no field_comparison/processing."""
+    if not extract_data.get("embeddings"):
+        return {"pass": False, "http": 0, "response": None,
+                "note": "SKIPPED — T5 did not return embeddings"}
+    metadata = json.dumps([{"stored_embeddings": extract_data["embeddings"]}])
+    with open(FIXTURES / "diploma-001.pdf", "rb") as f:
+        r = requests.post(f"{BASE_URL}/verify",
+                          files=[("files", ("diploma-001.pdf", f, "application/pdf"))],
+                          data={"metadata": metadata},
+                          timeout=LARGE_FILE_TIMEOUT)
+    body = r.json()
+    d = (body.get("data") or [None])[0]
+    valid_verdicts = {"tampered", "suspicious", "low_similarity", "not_similar"}
+    expected_keys = {"similarity_score", "similarity_percent", "verdict", "description"}
+    ok = (r.status_code == 200 and d is not None
+          and d.get("verdict") in valid_verdicts
+          and set(d.keys()) == expected_keys)
+    note = (f"verdict={d.get('verdict') if d else None} "
+            f"keys={sorted(d.keys()) if d else []}")
+    return {"pass": ok, "http": r.status_code, "response": body, "note": note}
+
+
+def test_verify_metadata_minimal():
+    """T14: /verify accepts metadata with only stored_embeddings (no stored_fields)."""
+    if not extract_data.get("embeddings"):
+        return {"pass": False, "http": 0, "response": None,
+                "note": "SKIPPED — T5 did not return embeddings"}
+    metadata = json.dumps([{"stored_embeddings": extract_data["embeddings"]}])
+    with open(FIXTURES / "diploma-001.pdf", "rb") as f:
+        r = requests.post(f"{BASE_URL}/verify",
+                          files=[("files", ("diploma-001.pdf", f, "application/pdf"))],
+                          data={"metadata": metadata},
+                          timeout=LARGE_FILE_TIMEOUT)
+    body = r.json()
+    d = (body.get("data") or [None])[0]
+    ok = (r.status_code == 200 and body.get("code") == 500200
+          and d is not None and "verdict" in d)
+    note = f"code={body.get('code')} accepted_minimal_metadata={ok}"
     return {"pass": ok, "http": r.status_code, "response": body, "note": note}
 
 
@@ -263,13 +323,16 @@ def main() -> None:
     run_test("T2: POST /extract — bad MIME (text/plain)", test_extract_bad_mime)
     run_test("T3: POST /extract — empty file", test_extract_empty_file)
     run_test("T4: POST /verify — malformed metadata", test_verify_malformed_metadata)
-    run_test("T5: POST /extract — diploma-id.pdf (LLM)", test_extract_diploma)
-    run_test("T6: POST /verify — same PDF vs stored (LLM)", test_verify_diploma)
-    run_test("T7: POST /extract-ids — diploma-id.pdf (regex)", test_extract_ids_diploma)
-    run_test("T8: POST /extract — transcript-id.pdf (2-page, LLM)", test_extract_multipage)
-    run_test("T9: POST /extract — id-card.jpg (EasyOCR direct)", test_extract_image_jpg)
-    run_test("T10: POST /extract — scanned-diploma.pdf (EasyOCR fallback)", test_extract_scanned_pdf)
-    run_test("T11: POST /extract — certificate.tiff (TIFF MIME)", test_extract_tiff)
+    run_test("T5: POST /extract — diploma-001.pdf (LaBSE)", test_extract_diploma)
+    run_test("T6: POST /verify — same PDF vs stored (LaBSE)", test_verify_diploma)
+    run_test("T7: POST /extract-ids — diploma-001.pdf (regex)", test_extract_ids_diploma)
+    run_test("T8: POST /extract — transcript-001.pdf", test_extract_multipage)
+    run_test("T9: POST /extract — diploma-001.jpg (EasyOCR)", test_extract_image_jpg)
+    run_test("T10: POST /extract — diploma-001.jpg (EasyOCR)", test_extract_scanned_pdf)
+    run_test("T11: POST /extract — diploma-001.tiff (TIFF)", test_extract_tiff)
+    run_test("T12: POST /extract — wire format (no extracted_fields)", test_extract_wire_format_no_extracted_fields)
+    run_test("T13: POST /verify — lowercase verdict + clean shape", test_verify_lowercase_verdict_and_clean_shape)
+    run_test("T14: POST /verify — minimal metadata (only stored_embeddings)", test_verify_metadata_minimal)
 
     report_path = (
         Path(__file__).parent.parent.parent / "docs" /

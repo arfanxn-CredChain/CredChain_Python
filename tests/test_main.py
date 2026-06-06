@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
 
@@ -5,6 +7,22 @@ def test_app_module_exposes_app():
     from app.main import app
     assert app is not None
     assert app.title == "CredChain Python AI Service"
+
+
+def test_lifespan_loads_only_two_models(mock_easyocr_reader, mock_embedding_model):
+    from app.main import create_app
+
+    app = create_app()
+    with patch("easyocr.Reader", return_value=mock_easyocr_reader), patch(
+        "sentence_transformers.SentenceTransformer", return_value=mock_embedding_model
+    ), TestClient(app):
+            assert hasattr(app.state, "easyocr_reader")
+            assert hasattr(app.state, "embedding_model")
+            assert app.state.easyocr_reader is mock_easyocr_reader
+            assert app.state.embedding_model is mock_embedding_model
+            assert not hasattr(app.state, "llm")
+            assert not hasattr(app.state, "llm_lock")
+            assert app.state.models_loaded is True
 
 
 def test_app_registers_routes():

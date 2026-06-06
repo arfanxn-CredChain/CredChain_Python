@@ -2,7 +2,7 @@
   "info": {
     "name": "CredChain Python AI Service",
     "_postman_id": "credchain-python-ai-v1",
-    "description": "CredChain Python AI Service — OCR, field extraction, similarity verification, and regex-based ID extraction for credential documents.\n\nAll POST endpoints accept multi-file uploads (`files: list[UploadFile]`).\nResponse envelope: `{code, message, data: list[T|null], errors: {\"files.<i>\": [...]}}`\n\nBase URL variable: set `BASE_URL` to your service address.",
+    "description": "CredChain Python AI Service — OCR, embedding-based similarity verification, and regex-based ID extraction for credential documents.\n\nAll POST endpoints accept multi-file uploads (`files: list[UploadFile]`).\nResponse envelope: `{code, message, data: list[T|null], errors: {\"files.<i>\": [...]}}`\n\nBase URL variable: set `BASE_URL` to your service address.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -53,7 +53,7 @@
     },
     {
       "name": "Extract",
-      "description": "OCR + LaBSE embedding + Qwen field extraction. Accepts one or more files.",
+      "description": "OCR + LaBSE embedding. Accepts one or more files.",
       "item": [
         {
           "name": "POST /extract — Single File",
@@ -76,7 +76,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["extract"]
             },
-            "description": "Upload a single credential document. Returns raw OCR text, 768-dim LaBSE embedding, and Qwen-extracted field key-value pairs."
+            "description": "Upload a single credential document. Returns raw OCR text and a 768-dim LaBSE embedding."
           },
           "response": [
             {
@@ -85,7 +85,7 @@
               "code": 200,
               "_postman_previewlanguage": "json",
               "header": [{"key": "Content-Type", "value": "application/json"}],
-              "body": "{\"code\":500100,\"message\":\"Document(s) extracted successfully\",\"data\":[{\"raw_text\":\"UNIVERSITAS INDONESIA\\nName: John Doe\\nStudent Number: 2019051234\",\"embeddings\":[0.123,-0.456,\"...(768 floats total)\"],\"extracted_fields\":{\"name\":\"John Doe\",\"student_number\":\"2019051234\",\"major\":\"Computer Science\"}}],\"errors\":null}"
+              "body": "{\"code\":500100,\"message\":\"Document(s) extracted successfully\",\"data\":[{\"raw_text\":\"UNIVERSITAS INDONESIA\\nName: John Doe\\nStudent Number: 2019051234\",\"embeddings\":[0.123,-0.456,\"...(768 floats total)\"]}],\"errors\":null}"
             },
             {
               "name": "Unsupported MIME type",
@@ -133,7 +133,7 @@
               "code": 200,
               "_postman_previewlanguage": "json",
               "header": [{"key": "Content-Type", "value": "application/json"}],
-              "body": "{\"code\":500100,\"message\":\"1/2 files extracted\",\"data\":[{\"raw_text\":\"...\",\"embeddings\":[\"...\"],\"extracted_fields\":{\"name\":\"John\"}},null],\"errors\":{\"files.1\":[\"Validation failed\"]}}"
+              "body": "{\"code\":500100,\"message\":\"1/2 files extracted\",\"data\":[{\"raw_text\":\"...\",\"embeddings\":[\"...\"]},null],\"errors\":{\"files.1\":[\"Validation failed\"]}}"
             }
           ]
         },
@@ -175,7 +175,7 @@
     },
     {
       "name": "Verify",
-      "description": "Cosine similarity + verdict + bilingual description. Uses Option B metadata blob: a single `metadata` JSON form field pairing each file with its stored embeddings and fields.",
+      "description": "Cosine similarity + verdict + bilingual description. Uses Option B metadata blob: a single `metadata` JSON form field pairing each file with its stored embeddings.",
       "item": [
         {
           "name": "POST /verify — Single File",
@@ -193,9 +193,9 @@
                 },
                 {
                   "key": "metadata",
-                  "value": "[{\"stored_embeddings\":[0.1,0.2,0.3],\"stored_fields\":{\"name\":\"John Doe\",\"student_number\":\"2019051234\"}}]",
+                  "value": "[{\"stored_embeddings\":[0.1,0.2,0.3]}]",
                   "type": "text",
-                  "description": "JSON array. metadata[i] pairs with files[i]. Each item must have stored_embeddings (768 floats) and stored_fields (dict)."
+                  "description": "JSON array. metadata[i] pairs with files[i]. Each item must have stored_embeddings (768 floats)."
                 }
               ]
             },
@@ -204,16 +204,16 @@
               "host": ["{{BASE_URL}}"],
               "path": ["verify"]
             },
-            "description": "Verify one uploaded document against its stored embeddings and fields. Returns similarity score, verdict (TAMPERED/SUSPICIOUS/LOW_SIMILARITY/NOT_SIMILAR), bilingual description, and per-field comparison."
+            "description": "Verify one uploaded document against its stored embeddings. Returns similarity score, verdict (tampered/suspicious/low_similarity/not_similar), and a bilingual description."
           },
           "response": [
             {
-              "name": "TAMPERED (same document)",
+              "name": "tampered (same document)",
               "status": "OK",
               "code": 200,
               "_postman_previewlanguage": "json",
               "header": [{"key": "Content-Type", "value": "application/json"}],
-              "body": "{\"code\":500200,\"message\":\"Verification(s) completed\",\"data\":[{\"similarity_score\":1.0,\"similarity_percent\":\"100.0%\",\"verdict\":\"TAMPERED\",\"description\":{\"id\":\"Dokumen ini diduga merupakan duplikasi atau manipulasi (kemiripan 100.0%).\",\"en\":\"This document is suspected of duplication or tampering (100.0% similarity).\"},\"field_comparison\":{\"name\":{\"stored\":\"John Doe\",\"uploaded\":\"John Doe\",\"match\":true}},\"processing\":{\"ocr_char_count\":527,\"model_used\":\"LaBSE\"}}],\"errors\":null}"
+              "body": "{\"code\":500200,\"message\":\"Verification(s) completed\",\"data\":[{\"similarity_score\":1.0,\"similarity_percent\":\"100.0%\",\"verdict\":\"tampered\",\"description\":{\"id\":\"Dokumen ini terlihat hampir identik dengan dokumen yang kami miliki (kemiripan 100.0%), yang biasanya berarti dokumen ini telah diduplikasi atau dimanipulasi.\",\"en\":\"This document looks almost identical to the one we have on file (100.0% similarity), which usually means it has been duplicated or tampered with.\"}}],\"errors\":null}"
             }
           ]
         },
@@ -239,7 +239,7 @@
                 },
                 {
                   "key": "metadata",
-                  "value": "[{\"stored_embeddings\":[0.1,0.2],\"stored_fields\":{\"name\":\"John\"}},{\"stored_embeddings\":[0.3,0.4],\"stored_fields\":{\"name\":\"Jane\"}}]",
+                  "value": "[{\"stored_embeddings\":[0.1,0.2]},{\"stored_embeddings\":[0.3,0.4]}]",
                   "type": "text",
                   "description": "JSON array with one entry per file. len(metadata) must equal len(files)."
                 }
@@ -270,7 +270,7 @@
                 },
                 {
                   "key": "metadata",
-                  "value": "[{\"stored_embeddings\":[0.1],\"stored_fields\":{\"x\":\"y\"}},{\"stored_embeddings\":[0.2],\"stored_fields\":{\"a\":\"b\"}}]",
+                  "value": "[{\"stored_embeddings\":[0.1]},{\"stored_embeddings\":[0.2]}]",
                   "type": "text",
                   "description": "Two metadata entries for one file — intentional mismatch"
                 }
@@ -290,7 +290,7 @@
               "code": 400,
               "_postman_previewlanguage": "json",
               "header": [{"key": "Content-Type", "value": "application/json"}],
-              "body": "{\"code\":500241,\"message\":\"Invalid stored_embeddings or stored_fields\",\"errors\":{\"metadata\":[\"Length mismatch: 2 metadata entries vs 1 files\"]}}"
+              "body": "{\"code\":500241,\"message\":\"Invalid stored_embeddings\",\"errors\":{\"metadata\":[\"Length mismatch: 2 metadata entries vs 1 files\"]}}"
             }
           ]
         }

@@ -1,6 +1,6 @@
 {
-  "verdict.tampered": "This document is suspected of duplication or tampering ({percent} similarity). Matching fields: {matched}. Differing fields: {mismatched}. Verdict: TAMPERED.",
-  "verdict.suspicious": "This document mostly matches the stored document ({percent} similarity, {match_count} of {total_count} fields match). Matching fields: {matched}. Differing fields: {mismatched}. Verdict: SUSPICIOUS — manual review recommended.",
-  "verdict.low_similarity": "This document has low similarity ({percent}) with the stored document. Only {match_count} of {total_count} fields match: {matched}. Differing or missing fields: {mismatched}. Verdict: LOW_SIMILARITY.",
-  "verdict.not_similar": "This document is not similar ({percent}) to the stored document. Only {match_count} of {total_count} fields match. Verdict: NOT_SIMILAR — likely a different document."
+  "verdict.tampered": "This document looks almost identical to the one we have on file ({percent} similarity), which usually means it has been duplicated or tampered with. We recommend a closer review before accepting it.",
+  "verdict.suspicious": "This document is a strong match for the one we have on file ({percent} similarity), but a few details look off. A manual review is recommended before accepting it.",
+  "verdict.low_similarity": "This document only loosely resembles the one we have on file ({percent} similarity). It may be a different version, an outdated copy, or an unrelated document.",
+  "verdict.not_similar": "This document does not appear to match the one we have on file ({percent} similarity). It is most likely a different document entirely."
 }

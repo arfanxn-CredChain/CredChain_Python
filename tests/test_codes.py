@@ -16,8 +16,6 @@ def test_validation_codes_use_40_suffix():
 
 def test_internal_codes_use_50_suffix():
     assert codes.CODE_AI_INTERNAL == 500050
-    assert codes.CODE_AI_EXTRACT_LLM_FAILED == 500150
-    assert codes.CODE_AI_VERIFY_LLM_FAILED == 500250
 
 
 def test_failure_codes_use_correct_status_suffix():
@@ -26,6 +24,13 @@ def test_failure_codes_use_correct_status_suffix():
     assert codes.CODE_AI_EXTRACT_IDS_OCR_FAILED == 500340
     assert codes.CODE_AI_EXTRACT_IDS_NO_MATCHES == 500341
     assert codes.CODE_AI_HEALTH_NOT_READY == 500950
+
+
+def test_no_llm_response_codes():
+    from app import codes
+    assert not hasattr(codes, "CODE_AI_EXTRACT_LLM_FAILED")
+    assert not hasattr(codes, "CODE_AI_LLM_TIMEOUT")
+    assert not hasattr(codes, "CODE_AI_VERIFY_LLM_FAILED")
 
 
 def test_all_codes_are_six_digit_integers():

@@ -1,6 +1,6 @@
 # CredChain Python - Agent Instructions
 
-Python AI service called by the Go backend over HTTP. Performs OCR, field extraction, semantic similarity, bilingual description generation, and regex-based ID extraction. Runs fully offline (no external API calls). Reachable only inside the Docker backend network — **never expose to public internet** (no auth, no rate limiting).
+Python AI service called by the Go backend over HTTP. Performs OCR, semantic similarity, bilingual description generation, and regex-based ID extraction. Runs fully offline (no external API calls). Reachable only inside the Docker backend network — **never expose to public internet** (no auth, no rate limiting).
 
 This file is the authoritative reference for AI assistants and engineers working in `CredChain_Python/`.
 
@@ -17,7 +17,6 @@ Sibling to `CredChain_Golang/` (backend, sole HTTP caller), `CredChain_React/` (
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate    # one-time
 make install                                              # install deps + dev extras
-make download-models                                      # one-time: download EasyOCR + LaBSE + Qwen to host
 make serve                                                # run uvicorn locally on :8081 (single worker)
 make dev                                                  # uvicorn with --reload
 make test                                                 # pytest tests/ -v (mocked, ~5s for 123 tests)
@@ -38,22 +37,21 @@ Copy `.env.example` → `.env` (or `.env.docker` for Docker-internal hostnames).
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
 make install
-make download-models    # ~2.5 GB total: EasyOCR (150 MB) + LaBSE (1.8 GB) + Qwen2.5-0.5B Q4_K_M (0.4 GB)
 make serve              # binds :8081 by default
 ```
 
-Models are downloaded to host (`./models/{easyocr,labse,qwen}/`) and mounted into the Docker container at runtime — **not baked into the image**. This keeps the image ~2.5 GB smaller and lets you swap models without rebuilding.
+Models are baked into the Docker image via a multi-stage Dockerfile — no host download required.
 
 No external API keys required — the service runs fully offline.
 
 ## Project Architecture
 
-Flat layout under `app/`. 14 source modules + `tests/`:
+Flat layout under `app/`. 13 source modules + `tests/`:
 
 ```
 CredChain_Python/
   app/
-    main.py             → FastAPI app + lifespan (loads 3 models) + middleware + error handlers
+    main.py             → FastAPI app + lifespan (loads 2 models) + middleware + error handlers
     routes.py           → 4 endpoints: /extract /verify /extract-ids /health
     schemas.py          → Pydantic Response[T] envelope + per-endpoint payloads
     config.py           → pydantic-settings .env loader + custom CSV env source
@@ -62,16 +60,14 @@ CredChain_Python/
     logger.py           → structured JSON logger (mirrors Go's zap shape)
     ocr.py              → PyMuPDF + EasyOCR fallback, is_text_useful() check
     embeddings.py       → LaBSE encode + cosine_similarity helper
-    llm.py              → llama-cpp-python wrapper: extract_fields only (with retry)
     description.py      → bilingual description from locales/ templates (no LLM call)
     i18n.py             → locale loader + localize(key, lang, **vars)
     comparison.py       → rapidfuzz token_set_ratio key matching + verdict mapping
     id_extractor.py     → regex-based ID extraction (built-in + custom patterns)
   tests/                → conftest.py + 14 test files (~123 tests, fully mocked)
     fixtures/           → shared test data
-  models/qwen/          → gitignored, ~0.4 GB Qwen 0.5B Q4_K_M GGUF (mounted)
-  models/easyocr/       → gitignored, ~150 MB EasyOCR weights (mounted)
-  models/labse/         → gitignored, ~1.8 GB LaBSE weights (mounted)
+  models/easyocr/       → gitignored, ~150 MB EasyOCR weights (baked into image)
+  models/labse/         → gitignored, ~1.8 GB LaBSE weights (baked into image)
   locales/              → tracked, JSON locale files (id, en) for description templates
   custom_id_patterns.txt → optional, gitignored, one regex per line
   pyproject.toml        → pinned deps + ruff + mypy + pytest config
@@ -92,7 +88,7 @@ All POST endpoints accept `files: list[UploadFile]` (multi-file batch). Hard cap
 
 | Method | Path | Purpose | Code |
 |---|---|---|---|
-| POST | `/extract` | Batch OCR + LaBSE embedding + Qwen field extraction | 500100 |
+| POST | `/extract` | Batch OCR + LaBSE embedding | 500100 |
 | POST | `/verify` | Batch cosine similarity + verdict + bilingual description | 500200 |
 | POST | `/extract-ids` | Batch extract document/registration IDs (regex-only) | 500300 |
 | GET | `/health` | Liveness + `models_loaded` flag | 500900 / 500950 |
@@ -106,9 +102,9 @@ Upload limit: 10 MB per file. Allowed MIME: `application/pdf`, `image/{jpeg,png,
   "code": 500100,
   "message": "Document(s) extracted successfully",
   "data": [
-    { "raw_text": "...", "embeddings": [...], "extracted_fields": {...} },
+    { "raw_text": "...", "embeddings": [...] },
     null,
-    { "raw_text": "...", "embeddings": [...], "extracted_fields": {...} }
+    { "raw_text": "...", "embeddings": [...] }
   ],
   "errors": {
     "files.1": ["OCR failed: corrupted PDF"]
@@ -130,8 +126,8 @@ POST /verify
 files: <file0.pdf>
 files: <file1.pdf>
 metadata: [
-  {"stored_embeddings": [0.1, ...], "stored_fields": {"name": "John"}},
-  {"stored_embeddings": [0.3, ...], "stored_fields": {"name": "Jane"}}
+  {"stored_embeddings": [0.1, ...]},
+  {"stored_embeddings": [0.3, ...]}
 ]
 ```
 
@@ -148,23 +144,22 @@ metadata: [
 
 ### Models Loaded Once via Lifespan
 
-Three heavyweight models are loaded once via FastAPI `lifespan` and accessed in handlers via `Depends()`:
+Two heavyweight models are loaded once via FastAPI `lifespan` and accessed in handlers via `Depends()`:
 
 | Module | Purpose | Approx Size |
 |---|---|---|
 | EasyOCR | OCR fallback when PyMuPDF text extraction is insufficient | ~150 MB |
 | LaBSE (sentence-transformers) | multilingual embeddings for semantic similarity | ~1.8 GB |
-| Qwen 2.5 0.5B Instruct (llama-cpp-python, Q4_K_M GGUF) | LLM-based field extraction | ~0.4 GB |
 
-The lifespan handler sets `app.state.models_loaded = True` after all three load successfully. `/health` returns code `500900` (loaded) or `500950` (not yet ready).
+The lifespan handler sets `app.state.models_loaded = True` after both load successfully. `/health` returns code `500900` (loaded) or `500950` (not yet ready).
 
-Models are NOT baked into the Docker image — they are mounted from host (`./models` → `/models`). `make download-models` must run on the host once before first `docker-up-build`.
+Models ARE baked into the Docker image via a multi-stage build.
 
 ### Single-Worker Concurrency
 
-Uvicorn runs with a single worker (`--workers 1`). LaBSE and Qwen are CPU-bound and not thread-safe; running multiple workers would multiply memory usage by N without throughput gain.
+Uvicorn runs with a single worker (`--workers 1`). LaBSE is CPU-bound and not thread-safe; running multiple workers would multiply memory usage by N without throughput gain.
 
-**Consequence:** while one client invokes `/extract`, no other client can call any endpoint until that request completes. Operators should size connection pool and request timeout accordingly. The Go backend should serialize calls to this service.
+**Consequence:** while one client invokes `/extract` or `/verify`, others wait on the LaBSE encoding step. Operators should size connection pool and request timeout accordingly. The Go backend should serialize calls to this service.
 
 ### OCR Fallback Chain (PyMuPDF → EasyOCR)
 
@@ -175,30 +170,24 @@ Uvicorn runs with a single worker (`--workers 1`). LaBSE and Qwen are CPU-bound 
 
 If either fails, the page is re-processed via EasyOCR (slower, image-based). This handles scanned PDFs and image uploads without paying the EasyOCR cost for clean text PDFs.
 
-### Field Comparison & Verdict Thresholds
-
-`app/comparison.py` matches keys with `rapidfuzz.token_set_ratio` (≥80 threshold), values with `rapidfuzz.partial_ratio` (≥85 threshold). Field similarity is averaged across matched keys; missing keys count as 0.
+### Verdict Thresholds
 
 Verdict thresholds (named constants in `comparison.py`):
 
 | Verdict | Similarity Range |
 |---|---|
-| `TAMPERED` | ≥ 0.95 (suspiciously near-perfect — likely copy with minor edits) |
-| `SUSPICIOUS` | ≥ 0.75 |
-| `LOW_SIMILARITY` | ≥ 0.40 |
-| `NOT_SIMILAR` | < 0.40 |
+| `tampered` | ≥ 0.95 (suspiciously near-perfect — likely copy with minor edits) |
+| `suspicious` | ≥ 0.75 |
+| `low_similarity` | ≥ 0.40 |
+| `not_similar` | < 0.40 |
 
-The verdict is computed from BOTH embedding cosine similarity AND field similarity — see `comparison.compute_verdict` for the exact decision logic.
+The verdict is computed from embedding cosine similarity alone.
 
 ### Locale-Based Description Generation
 
 `/verify` returns a bilingual human-readable description for each verdict. Descriptions are rendered from `locales/{en,id}.json` templates — **no LLM call** for descriptions. This keeps `/verify` fast and deterministic.
 
-`app/i18n.localize(key, lang, **vars)` resolves the template and substitutes variables. `app/description.build_description(verdict, similarity, lang)` orchestrates the lookup.
-
-### LLM Retry on JSON Parse Failure
-
-`app/llm.extract_fields` retries once on JSON parse failure (Qwen occasionally emits trailing commas or unbalanced braces). On the second failure, raises `AppError(CODE_AI_EXTRACT_LLM_FAILED)` and the file's slot in the response is set to `null` with the error pushed under `files.<i>`.
+`app/i18n.localize(key, lang, **vars)` resolves the template and substitutes variables. `app/description.build_description(verdict, similarity_percent)` orchestrates the lookup.
 
 ### Custom Env CSV Source
 
@@ -215,11 +204,6 @@ When adding a new CSV env var, register it in both sources or pydantic will trea
 | `LOG_OUTPUT` | `stdout` | `stdout` or file path |
 | `MODEL_DIR` | `/models` | parent dir for model subdirs |
 | `EASYOCR_LANGS` | `id,en` | comma-separated languages |
-| `LLM_MAX_NEW_TOKENS` | `512` | cap on Qwen generation length |
-| `LLM_DEVICE` | `cpu` | `cpu` only currently |
-| `LLM_MODEL_NAME` | `Qwen2.5-0.5B-Instruct` | display name in responses |
-| `LLM_MODEL_FILE` | `qwen2.5-0.5b-instruct-q4_k_m.gguf` | actual GGUF file loaded |
-| `EMBEDDING_MODEL_NAME` | `LaBSE` | display name in responses |
 | `LOCALES_DIR` | `./locales` | parent dir for locale JSON files |
 | `CUSTOM_ID_PATTERNS_FILE` | `./custom_id_patterns.txt` | optional regex patterns file |
 | `OVERRIDE_BUILTIN_ID_PATTERNS` | `false` | `true` = skip built-in ID patterns |
@@ -229,8 +213,8 @@ When adding a new CSV env var, register it in both sources or pydantic will trea
 ## Testing
 
 - **Framework:** pytest 8.3.4 + pytest-asyncio 0.24.0 + httpx 0.28.1 (for FastAPI TestClient)
-- **Count:** ~123 tests across 14 test files. All mocked — no real model loads, no real network calls. Runs in <15s.
-- **Fixtures:** `tests/conftest.py` provides `mock_easyocr_reader`, `mock_embedding_model`, `mock_llm`.
+- **Count:** ~107 tests across 13 test files. All mocked — no real model loads, no real network calls. Runs in <15s.
+- **Fixtures:** `tests/conftest.py` provides `mock_easyocr_reader`, `mock_embedding_model`.
 - **Coverage layout:** every `app/*.py` module has a matching `tests/test_*.py`.
 - **mypy:** strict mode on `app/`; relaxed on `tests/` (allows missing return type annotations on test functions).
 - **ruff config:** select `E,F,I,N,UP,B,SIM,RET,PT`; line-length 100; `B008` ignored in `app/routes.py` (FastAPI `Depends()` / `File()` defaults are idiomatic).
@@ -253,8 +237,6 @@ Pinned in `pyproject.toml`:
 | PDF | PyMuPDF | 1.25.1 |
 | OCR | EasyOCR | 1.7.2 (id+en) |
 | Embeddings | sentence-transformers (LaBSE) | 3.3.1 |
-| LLM runtime | llama-cpp-python | 0.3.4 |
-| LLM model | Qwen2.5-0.5B-Instruct Q4_K_M GGUF | ~0.4 GB |
 | ML backend | torch (CPU) | 2.5.1 |
 | Fuzzy match | rapidfuzz | 3.10.1 |
 | Image | Pillow | 11.0.0 |
@@ -273,6 +255,8 @@ Pinned in `pyproject.toml`:
 Response codes use a 6-digit `AABBCC` format. This service owns category `50` (AI). The Go backend uses categories `10` (system), `20` (auth), `30` (user), `40` (credential). When the Go side surfaces a Python error to the frontend, it preserves the original `50xxxx` code so the React `CODE_TO_MESSAGE_KEY` map can look up the i18n key.
 
 Locale files in `locales/{en,id}.json` provide the description templates rendered by `/verify`. Keep keys in lockstep with backend and frontend locale files — there is no automated sync check on the Python side, so the Go and React side checks act as the canary.
+
+**Wire format change (2026-05-31):** `/extract` no longer returns `extracted_fields`. `/verify` no longer accepts `metadata[].stored_fields` and no longer returns `field_comparison` or `processing`. Verdict strings (`tampered`, `suspicious`, `low_similarity`, `not_similar`) are now lowercase. The Go backend must be updated separately to align — tracked in a Go-side spec.
 
 ## Deployment
 

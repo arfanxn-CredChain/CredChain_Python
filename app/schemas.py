@@ -23,15 +23,6 @@ class ExtractData(BaseModel):
 
     raw_text: str
     embeddings: list[float]
-    extracted_fields: dict[str, str]
-
-
-class FieldComparisonEntry(BaseModel):
-    """Single stored-vs-uploaded field comparison row."""
-
-    stored: str
-    uploaded: str
-    match: bool
 
 
 class VerifyDescription(BaseModel):
@@ -41,13 +32,6 @@ class VerifyDescription(BaseModel):
     en: str
 
 
-class VerifyProcessing(BaseModel):
-    """Processing metadata for the verify response."""
-
-    ocr_char_count: int
-    model_used: str
-
-
 class VerifyData(BaseModel):
     """Payload returned from POST /verify."""
 
@@ -55,8 +39,6 @@ class VerifyData(BaseModel):
     similarity_percent: str
     verdict: str
     description: VerifyDescription
-    field_comparison: dict[str, FieldComparisonEntry]
-    processing: VerifyProcessing
 
 
 class VerifyMetadataItem(BaseModel):
@@ -66,7 +48,6 @@ class VerifyMetadataItem(BaseModel):
     """
 
     stored_embeddings: list[float]
-    stored_fields: dict[str, str]
 
 
 class ExtractIdsData(BaseModel):

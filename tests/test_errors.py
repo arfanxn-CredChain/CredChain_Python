@@ -31,7 +31,6 @@ def test_app_error_unknown_code_falls_back():
         (codes.CODE_AI_VERIFY_INVALID_INPUT, 400),
         (codes.CODE_AI_EXTRACT_OCR_FAILED, 400),
         (codes.CODE_AI_INTERNAL, 500),
-        (codes.CODE_AI_EXTRACT_LLM_FAILED, 500),
         (codes.CODE_AI_HEALTH_NOT_READY, 500),
     ],
 )

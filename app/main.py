@@ -5,7 +5,6 @@ logging, unified error envelope. Reachable only inside the Docker
 backend network — never exposed to the public internet.
 """
 
-import asyncio
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -27,7 +26,7 @@ log = get_logger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Load all ML models once at startup, free them at shutdown."""
+    """Load EasyOCR + LaBSE once at startup."""
     log.info(
         "loading models",
         extra={"extra_fields": {"phase": "startup", "model_dir": settings.model_dir}},
@@ -35,26 +34,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.models_loaded = False
 
     import easyocr
-    from llama_cpp import Llama
     from sentence_transformers import SentenceTransformer
 
     app.state.easyocr_reader = easyocr.Reader(
         settings.easyocr_langs,
-        gpu=(settings.llm_device != "cpu"),
+        gpu=False,
         model_storage_directory=f"{settings.model_dir}/easyocr",
     )
     app.state.embedding_model = SentenceTransformer(
         f"{settings.model_dir}/labse",
-        device=settings.llm_device,
+        device="cpu",
     )
-    app.state.llm = Llama(
-        model_path=f"{settings.model_dir}/qwen/{settings.llm_model_file}",
-        n_ctx=2048,
-        n_threads=8,
-        chat_format="chatml",
-        verbose=False,
-    )
-    app.state.llm_lock = asyncio.Lock()
 
     app.state.models_loaded = True
     log.info("models ready", extra={"extra_fields": {"phase": "ready"}})

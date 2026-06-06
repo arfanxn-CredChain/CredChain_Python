@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
@@ -84,13 +84,7 @@ class Settings(BaseSettings):
 
     model_dir: str = "/models"
     easyocr_langs: list[str] = Field(default_factory=lambda: ["id", "en"])
-
-    llm_max_new_tokens: int = 512
-    llm_device: str = "cpu"
-    llm_timeout_seconds: int = 60
-    llm_model_name: str = "Qwen2.5-0.5B-Instruct"
-    llm_model_file: str = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
-    embedding_model_name: str = "LaBSE"
+    ocr_max_image_pixels: int = 2_000_000
 
     locales_dir: str = "./locales"
 
@@ -106,24 +100,6 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [item.strip() for item in v.split(",") if item.strip()]
         return v
-
-    @model_validator(mode="after")
-    def validate_model_paths(self) -> "Settings":
-        """Fail fast if the GGUF model file is missing at startup.
-
-        Conditional on model_dir existing so tests (which use /models that
-        doesn't exist locally) still pass without downloading models.
-        """
-        from pathlib import Path
-        model_dir = Path(self.model_dir)
-        if model_dir.exists():
-            gguf_path = model_dir / "qwen" / self.llm_model_file
-            if not gguf_path.exists():
-                raise ValueError(
-                    f"LLM model file not found: {gguf_path}. "
-                    f"Run `make download-models` first."
-                )
-        return self
 
     @classmethod
     def settings_customise_sources(

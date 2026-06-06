@@ -4,7 +4,7 @@ ifneq (,$(wildcard $(ENV_FILE)))
     export
 endif
 
-.PHONY: help install download-models gen-fixtures serve dev test lint typecheck format \
+.PHONY: help install gen-fixtures serve dev test lint typecheck format \
 	docker-up docker-up-build docker-down docker-logs docker-ps docker-fresh
 
 help:
@@ -12,7 +12,6 @@ help:
 	@echo ""
 	@echo "Local Development:"
 	@echo "  make install         - Install deps with pip in editable mode (dev extras)"
-	@echo "  make download-models - Download EasyOCR + LaBSE + Qwen2.5-1.5B-Instruct to host"
 	@echo "  make serve           - Run uvicorn (single worker)"
 	@echo "  make dev             - Run uvicorn with --reload"
 	@echo "  make test            - Run pytest"
@@ -21,7 +20,7 @@ help:
 	@echo "  make format          - Run ruff format"
 	@echo ""
 	@echo "Docker:"
-	@echo "  make docker-up       - docker compose up -d (requires download-models first)"
+	@echo "  make docker-up       - docker compose up -d"
 	@echo "  make docker-up-build - docker compose up -d --build"
 	@echo "  make docker-down     - docker compose down"
 	@echo "  make docker-logs     - tail compose logs"
@@ -34,17 +33,6 @@ install:
 gen-fixtures:
 	.venv/bin/python tests/fixtures/gen_fixtures.py
 	@echo ">>> Fixtures generated in tests/fixtures/"
-
-download-models:
-	@echo ">>> Downloading EasyOCR (id+en) into ./models/easyocr..."
-	.venv/bin/python -c "import easyocr; easyocr.Reader(['id', 'en'], model_storage_directory='./models/easyocr', download_enabled=True)"
-	@echo ">>> Downloading LaBSE into ./models/labse..."
-	.venv/bin/python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/LaBSE').save('./models/labse')"
-	@echo ">>> Downloading Qwen2.5-0.5B-Instruct-Q4_K_M.gguf into ./models/qwen..."
-	.venv/bin/huggingface-cli download Qwen/Qwen2.5-0.5B-Instruct-GGUF \
-		--local-dir ./models/qwen \
-		--include "qwen2.5-0.5b-instruct-q4_k_m.gguf"
-	@echo ">>> All models downloaded."
 
 serve:
 	uvicorn app.main:app --host 0.0.0.0 --port 8081 --workers 1

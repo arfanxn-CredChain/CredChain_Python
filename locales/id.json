@@ -1,6 +1,6 @@
 {
-  "verdict.tampered": "Dokumen ini diduga merupakan duplikasi atau manipulasi (kemiripan {percent}). Field yang cocok: {matched}. Field yang berbeda: {mismatched}. Verdikt: TAMPERED.",
-  "verdict.suspicious": "Dokumen ini sebagian besar cocok dengan dokumen tersimpan (kemiripan {percent}, {match_count} dari {total_count} field cocok). Field yang cocok: {matched}. Field yang berbeda: {mismatched}. Verdikt: SUSPICIOUS — perlu peninjauan manual.",
-  "verdict.low_similarity": "Dokumen ini memiliki kemiripan rendah ({percent}) dengan dokumen tersimpan. Hanya {match_count} dari {total_count} field yang cocok: {matched}. Field yang tidak cocok: {mismatched}. Verdikt: LOW_SIMILARITY.",
-  "verdict.not_similar": "Dokumen ini tidak mirip ({percent}) dengan dokumen tersimpan. Hanya {match_count} dari {total_count} field cocok. Verdikt: NOT_SIMILAR — kemungkinan dokumen yang berbeda."
+  "verdict.tampered": "Dokumen ini terlihat hampir identik dengan dokumen yang kami miliki (kemiripan {percent}), yang biasanya berarti dokumen ini telah diduplikasi atau dimanipulasi. Sebaiknya lakukan peninjauan lebih lanjut sebelum dokumen diterima.",
+  "verdict.suspicious": "Dokumen ini cukup mirip dengan dokumen yang kami miliki (kemiripan {percent}), namun ada beberapa detail yang terlihat berbeda. Sebaiknya dilakukan peninjauan manual sebelum dokumen diterima.",
+  "verdict.low_similarity": "Dokumen ini hanya sedikit menyerupai dokumen yang kami miliki (kemiripan {percent}). Kemungkinan ini adalah versi yang berbeda, salinan lama, atau dokumen yang tidak terkait.",
+  "verdict.not_similar": "Dokumen ini tampaknya tidak cocok dengan dokumen yang kami miliki (kemiripan {percent}). Kemungkinan besar ini adalah dokumen yang sepenuhnya berbeda."
 }

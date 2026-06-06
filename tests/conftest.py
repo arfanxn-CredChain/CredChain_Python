@@ -25,19 +25,4 @@ def mock_embedding_model() -> MagicMock:
     return model
 
 
-@pytest.fixture
-def mock_llm() -> MagicMock:
-    """Mocked llama_cpp.Llama instance.
-
-    Default response is an empty JSON object so extract_fields returns {}
-    cleanly. Tests can override `mock.create_chat_completion.return_value`
-    or `.side_effect` for specific responses.
-    """
-    mock = MagicMock()
-    mock.create_chat_completion.return_value = {
-        "choices": [{"message": {"content": "{}"}}]
-    }
-    return mock
-
-
 collect_ignore = ["integration_test.py"]
