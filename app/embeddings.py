@@ -1,7 +1,12 @@
-"""LaBSE sentence-embedding wrapper + cosine similarity helper."""
+"""EmbeddingGemma sentence-embedding wrapper + cosine similarity helper.
+
+Uses google/embeddinggemma-300M via sentence-transformers.
+"""
 
 import math
 from typing import TYPE_CHECKING
+
+import numpy as np
 
 from app import codes
 from app.errors import AppError
@@ -11,19 +16,6 @@ if TYPE_CHECKING:
 
 
 def encode(model: "SentenceTransformer", text: str) -> list[float]:
-    """Encode text into a single document-level LaBSE embedding.
-
-    Args:
-        model: pre-loaded SentenceTransformer (LaBSE).
-        text: OCR-extracted document text. Must be non-empty.
-
-    Returns:
-        Plain Python list of 768 floats. Model is configured to L2-normalize
-        the output so cosine similarity is just a dot product downstream.
-
-    Raises:
-        AppError(CODE_AI_INTERNAL) if text is empty.
-    """
     if not text or not text.strip():
         raise AppError(codes.CODE_AI_INTERNAL, message="Cannot encode empty text")
     max_seq = int(getattr(model, "max_seq_length", 512) or 512)
@@ -31,19 +23,16 @@ def encode(model: "SentenceTransformer", text: str) -> list[float]:
     if word_count > max_seq:
         import logging as _logging
         _logging.getLogger("embeddings").warning(
-            "text may exceed LaBSE max_seq_length and will be truncated: "
+            "text may exceed max_seq_length and will be truncated: "
             "word_count=%d max_seq=%d", word_count, max_seq,
         )
     arr = model.encode(text, normalize_embeddings=True, convert_to_numpy=True)
-    return [float(x) for x in arr.tolist()]
+    if isinstance(arr, np.ndarray):
+        return [float(x) for x in arr.tolist()]
+    return [float(x) for x in arr]  # type: ignore[unreachable]
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Compute cosine similarity between two vectors.
-
-    Returns a value in [-1, 1]. If either vector has zero magnitude, the
-    similarity is defined as 0 (avoid division by zero).
-    """
     if len(a) != len(b):
         raise AppError(
             codes.CODE_AI_INTERNAL,
