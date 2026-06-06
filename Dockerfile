@@ -5,9 +5,13 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends wget && \
     rm -rf /var/lib/apt/lists/*
 
-COPY . .
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
+COPY pyproject.toml .
 RUN pip install --no-cache-dir -e "."
+
+COPY app/ app/
+COPY locales/ locales/
 
 EXPOSE 8081
 
