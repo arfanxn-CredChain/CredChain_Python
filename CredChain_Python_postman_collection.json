@@ -1,0 +1,575 @@
+{
+  "info": {
+    "_postman_id": "a7f3c1d9-4b2e-48a5-9f6d-8e1c3a5b7d0f",
+    "name": "CredChain Python AI",
+    "description": "CredChain Python AI Service collection. All endpoints under / — Extract (Gemini OCR + LaBSE embedding), Verify (cosine similarity + bilingual description), Extract IDs (regex-based), Health (liveness). No auth required. Reachable only inside the Docker backend network.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "17284024"
+  },
+  "item": [
+    {
+      "name": "API",
+      "item": [
+        {
+          "name": "Health",
+          "item": [
+            {
+              "name": "Health Check",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const r = pm.response.json();",
+                      "pm.test('Health OK', () => { pm.response.to.have.status(200); pm.expect(r.code).to.eql(500900); });"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/health",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["health"]
+                },
+                "description": "Liveness check. Returns 200 with code 500900 when models are loaded, 503 with code 500950 when still loading."
+              },
+              "response": [
+                {
+                  "name": "500900 Healthy",
+                  "originalRequest": {},
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500900,\n    \"message\": \"healthy\",\n    \"data\": {\n        \"message\": \"healthy\"\n    }\n}"
+                },
+                {
+                  "name": "500950 Model Loading",
+                  "originalRequest": {},
+                  "status": "Service Unavailable",
+                  "code": 503,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500950,\n    \"message\": \"model loading\",\n    \"data\": {\n        \"message\": \"model loading\"\n    }\n}"
+                }
+              ]
+            }
+          ],
+          "description": "Liveness/readiness endpoint."
+        },
+        {
+          "name": "Extract",
+          "item": [
+            {
+              "name": "Extract Document",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const r = pm.response.json();",
+                      "pm.test('Status 200', () => { pm.response.to.have.status(200); });",
+                      "pm.test('Has code', () => { pm.expect(r.code).to.be.a('number'); });",
+                      "if (r.code === 500100) {",
+                      "    pm.test('Extract success', () => { pm.expect(r.data).to.be.an('array'); });",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "files",
+                      "type": "file",
+                      "src": "test-document.pdf"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/extract",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["extract"]
+                },
+                "description": "Extract text + IDs from documents via Gemini, then compute LaBSE embeddings. Accepts multiple files (multipart). Response data array mirrors input file order; null entries for failed files with error details in the errors map."
+              },
+              "response": [
+                {
+                  "name": "500100 Single File Success",
+                  "originalRequest": {},
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500100,\n    \"message\": \"Document(s) extracted successfully\",\n    \"data\": [\n        {\n            \"raw_text\": \"John Doe\\nPassport No: A12345678\\nDOB: 1990-01-15\",\n            \"ids\": [\n                {\"type\": \"passport\", \"value\": \"A12345678\"}\n            ],\n            \"embeddings\": [0.0123, -0.0456, 0.0789]\n        }\n    ]\n}"
+                },
+                {
+                  "name": "500100 Multi-File Success with Partial Failure",
+                  "originalRequest": {},
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500100,\n    \"message\": \"2/3 files extracted\",\n    \"data\": [\n        {\n            \"raw_text\": \"First document text\",\n            \"ids\": [],\n            \"embeddings\": [0.01, 0.02] \n        },\n        null,\n        {\n            \"raw_text\": \"Third document text\",\n            \"ids\": [{\"type\": \"nik\", \"value\": \"3271041234567890\"}],\n            \"embeddings\": [0.03, 0.04]\n        }\n    ],\n    \"errors\": {\n        \"files.1\": [\"Gemini extraction failed\"]\n    }\n}"
+                },
+                {
+                  "name": "500150 All Files Gemini Failed",
+                  "originalRequest": {},
+                  "status": "Internal Server Error",
+                  "code": 500,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500150,\n    \"message\": \"Gemini API request failed\",\n    \"data\": [\n        null,\n        null\n    ],\n    \"errors\": {\n        \"files.0\": [\"Internal error processing file\"],\n        \"files.1\": [\"Internal error processing file\"]\n    }\n}"
+                },
+                {
+                  "name": "500040 Validation - No Files",
+                  "originalRequest": {},
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500040,\n    \"message\": \"Validation failed\",\n    \"errors\": {\n        \"files\": [\"At least one file is required\"]\n    }\n}"
+                },
+                {
+                  "name": "500040 Validation - Unsupported MIME Type",
+                  "originalRequest": {},
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500040,\n    \"message\": \"Validation failed\",\n    \"errors\": {\n        \"files.0\": [\"Unsupported MIME type: text/plain\"]\n    }\n}"
+                },
+                {
+                  "name": "500040 Validation - File Too Large",
+                  "originalRequest": {},
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500040,\n    \"message\": \"Validation failed\",\n    \"errors\": {\n        \"files.0\": [\"File too large: 11534336 bytes > 10485760\"]\n    }\n}"
+                },
+                {
+                  "name": "500040 Validation - Too Many Files",
+                  "originalRequest": {},
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500040,\n    \"message\": \"Validation failed\",\n    \"errors\": {\n        \"files\": [\"Too many files: 101 > 100\"]\n    }\n}"
+                },
+                {
+                  "name": "500050 Internal Server Error",
+                  "originalRequest": {},
+                  "status": "Internal Server Error",
+                  "code": 500,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500050,\n    \"message\": \"Internal server error\"\n}"
+                }
+              ]
+            }
+          ],
+          "description": "Gemini-based document extraction with LaBSE embeddings."
+        },
+        {
+          "name": "Verify",
+          "item": [
+            {
+              "name": "Verify Document (English)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const r = pm.response.json();",
+                      "pm.test('Status 200', () => { pm.response.to.have.status(200); });",
+                      "pm.test('Has code', () => { pm.expect(r.code).to.be.a('number'); });",
+                      "if (r.code === 500200) {",
+                      "    pm.test('Verify success', () => {",
+                      "        pm.expect(r.data).to.be.an('array');",
+                      "        pm.expect(r.data[0].similarity_score).to.be.a('number');",
+                      "        pm.expect(r.data[0].verdict).to.be.a('string');",
+                      "        pm.expect(r.data[0].description).to.be.a('string');",
+                      "    });",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept-Language",
+                    "value": "en",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "files",
+                      "type": "file",
+                      "src": "test-document.pdf"
+                    },
+                    {
+                      "key": "metadata",
+                      "value": "[{\"stored_embeddings\": [0.0123, -0.0456, 0.0789]}]",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/verify",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["verify"]
+                },
+                "description": "Verify documents by comparing extracted text embeddings against stored embeddings. Requires a metadata JSON form field pairing each file with its stored_embeddings. Accept-Language header controls description language (en/id). Verdict thresholds: ≥0.95 tampered, ≥0.75 suspicious, ≥0.55 low_similarity, <0.55 not_similar."
+              },
+              "response": [
+                {
+                  "name": "500200 Single File Success (English)",
+                  "originalRequest": {},
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500200,\n    \"message\": \"Verification(s) completed\",\n    \"data\": [\n        {\n            \"similarity_score\": 0.8745,\n            \"similarity_percent\": \"87.45%\",\n            \"verdict\": \"suspicious\",\n            \"description\": \"Document is suspicious with 87.45% similarity. Content may have been altered.\"\n        }\n    ]\n}"
+                },
+                {
+                  "name": "500200 Tampered Verdict",
+                  "originalRequest": {},
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500200,\n    \"message\": \"Verification(s) completed\",\n    \"data\": [\n        {\n            \"similarity_score\": 0.9732,\n            \"similarity_percent\": \"97.32%\",\n            \"verdict\": \"tampered\",\n            \"description\": \"Document is tampered with 97.32% similarity. Near-perfect match suggests copied content with minor edits.\"\n        }\n    ]\n}"
+                },
+                {
+                  "name": "500200 Low Similarity Verdict",
+                  "originalRequest": {},
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500200,\n    \"message\": \"Verification(s) completed\",\n    \"data\": [\n        {\n            \"similarity_score\": 0.6234,\n            \"similarity_percent\": \"62.34%\",\n            \"verdict\": \"low_similarity\",\n            \"description\": \"Document has low similarity at 62.34%. Significant differences detected.\"\n        }\n    ]\n}"
+                },
+                {
+                  "name": "500200 Not Similar Verdict",
+                  "originalRequest": {},
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500200,\n    \"message\": \"Verification(s) completed\",\n    \"data\": [\n        {\n            \"similarity_score\": 0.2105,\n            \"similarity_percent\": \"21.05%\",\n            \"verdict\": \"not_similar\",\n            \"description\": \"Document is not similar at 21.05%. Content appears to be completely different.\"\n        }\n    ]\n}"
+                },
+                {
+                  "name": "500200 Multi-File Partial Success",
+                  "originalRequest": {},
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500200,\n    \"message\": \"1/2 files verified\",\n    \"data\": [\n        {\n            \"similarity_score\": 0.9123,\n            \"similarity_percent\": \"91.23%\",\n            \"verdict\": \"suspicious\",\n            \"description\": \"Document is suspicious with 91.23% similarity.\"\n        },\n        null\n    ],\n    \"errors\": {\n        \"files.1\": [\"No text extracted from document\"]\n    }\n}"
+                },
+                {
+                  "name": "500241 Metadata Length Mismatch",
+                  "originalRequest": {},
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500241,\n    \"message\": \"Invalid stored_embeddings\",\n    \"errors\": {\n        \"metadata\": [\"Length mismatch: 2 vs 1\"]\n    }\n}"
+                },
+                {
+                  "name": "500241 Invalid JSON Metadata",
+                  "originalRequest": {},
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500241,\n    \"message\": \"Invalid stored_embeddings\",\n    \"errors\": {\n        \"metadata\": [\"Expecting value: line 1 column 1 (char 0)\"]\n    }\n}"
+                },
+                {
+                  "name": "500241 Not a JSON Array",
+                  "originalRequest": {},
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500241,\n    \"message\": \"Invalid stored_embeddings\",\n    \"errors\": {\n        \"metadata\": [\"Must be a JSON array\"]\n    }\n}"
+                },
+                {
+                  "name": "500040 Validation - No Files",
+                  "originalRequest": {},
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500040,\n    \"message\": \"Validation failed\",\n    \"errors\": {\n        \"files\": [\"At least one file is required\"]\n    }\n}"
+                },
+                {
+                  "name": "500040 Validation - Unsupported MIME Type",
+                  "originalRequest": {},
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500040,\n    \"message\": \"Validation failed\",\n    \"errors\": {\n        \"files.0\": [\"Unsupported MIME type: text/html\"]\n    }\n}"
+                },
+                {
+                  "name": "500050 Internal Server Error",
+                  "originalRequest": {},
+                  "status": "Internal Server Error",
+                  "code": 500,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500050,\n    \"message\": \"Internal server error\"\n}"
+                }
+              ]
+            }
+          ],
+          "description": "Document verification via cosine similarity and bilingual descriptions."
+        },
+        {
+          "name": "Extract IDs",
+          "item": [
+            {
+              "name": "Extract IDs from Document",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const r = pm.response.json();",
+                      "pm.test('Status 200', () => { pm.response.to.have.status(200); });",
+                      "pm.test('Has code', () => { pm.expect(r.code).to.be.a('number'); });",
+                      "if (r.code === 500300) {",
+                      "    pm.test('Extract IDs success', () => {",
+                      "        pm.expect(r.data).to.be.an('array');",
+                      "        pm.expect(r.data[0].ids).to.be.an('array');",
+                      "    });",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "files",
+                      "type": "file",
+                      "src": "test-document.pdf"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/extract-ids",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["extract-ids"]
+                },
+                "description": "Extract document/registration IDs using regex patterns (no LLM call). Built-in patterns cover Indonesian IDs (NIK, NPWP, NIP, NIM) and generic codes (hyphenated, grouped alnum, prefixed alnum, UUID, ULID). Custom patterns loaded from CUSTOM_ID_PATTERNS_FILE if configured."
+              },
+              "response": [
+                {
+                  "name": "500300 Single File Success",
+                  "originalRequest": {},
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500300,\n    \"message\": \"Potential IDs extracted\",\n    \"data\": [\n        {\n            \"ids\": [\n                {\"type\": \"nik\", \"value\": \"3271041234567890\"},\n                {\"type\": \"uuid\", \"value\": \"550e8400-e29b-41d4-a716-446655440000\"}\n            ]\n        }\n    ]\n}"
+                },
+                {
+                  "name": "500300 Multi-File Partial Success",
+                  "originalRequest": {},
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500300,\n    \"message\": \"2/3 files processed\",\n    \"data\": [\n        {\n            \"ids\": [\n                {\"type\": \"nik\", \"value\": \"3271041234567890\"}\n            ]\n        },\n        null,\n        {\n            \"ids\": [\n                {\"type\": \"npwp\", \"value\": \"12.345.678.9-012.345\"}\n            ]\n        }\n    ],\n    \"errors\": {\n        \"files.1\": [\"Internal error processing file\"]\n    }\n}"
+                },
+                {
+                  "name": "500341 No Matches Found",
+                  "originalRequest": {},
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500341,\n    \"message\": \"No potential IDs found in document\",\n    \"data\": [\n        {\n            \"ids\": []\n        }\n    ]\n}"
+                },
+                {
+                  "name": "500340 All Files OCR Failed",
+                  "originalRequest": {},
+                  "status": "Internal Server Error",
+                  "code": 500,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500340,\n    \"message\": \"OCR failed during ID extraction\",\n    \"data\": [\n        null,\n        null\n    ],\n    \"errors\": {\n        \"files.0\": [\"Internal error processing file\"],\n        \"files.1\": [\"Internal error processing file\"]\n    }\n}"
+                },
+                {
+                  "name": "500040 Validation - No Files",
+                  "originalRequest": {},
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500040,\n    \"message\": \"Validation failed\",\n    \"errors\": {\n        \"files\": [\"At least one file is required\"]\n    }\n}"
+                },
+                {
+                  "name": "500040 Validation - Unsupported MIME Type",
+                  "originalRequest": {},
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500040,\n    \"message\": \"Validation failed\",\n    \"errors\": {\n        \"files.0\": [\"Unsupported MIME type: audio/mpeg\"]\n    }\n}"
+                },
+                {
+                  "name": "500040 Validation - Empty File",
+                  "originalRequest": {},
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500040,\n    \"message\": \"Validation failed\",\n    \"errors\": {\n        \"files.0\": [\"File is empty\"]\n    }\n}"
+                },
+                {
+                  "name": "500050 Internal Server Error",
+                  "originalRequest": {},
+                  "status": "Internal Server Error",
+                  "code": 500,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    { "key": "Content-Type", "value": "application/json" }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"code\": 500050,\n    \"message\": \"Internal server error\"\n}"
+                }
+              ]
+            }
+          ],
+          "description": "Regex-based ID extraction from documents (no LLM)."
+        }
+      ],
+      "description": "All AI service endpoints. No auth required. All POST endpoints accept multipart file uploads with a 10 MB per-file limit and a 100-file per-request cap. Allowed MIME types: application/pdf, image/jpeg, image/png, image/webp, image/tiff."
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:8081",
+      "type": "string"
+    },
+    {
+      "key": "GEMINI_API_KEY",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "HF_TOKEN",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
