@@ -1,8 +1,9 @@
 """CredChain Python AI Service — FastAPI application factory.
 
-Single uvicorn worker, models loaded once via lifespan, structured JSON
-logging, unified error envelope. Reachable only inside the Docker
-backend network — never exposed to the public internet.
+Single uvicorn worker, EmbeddingGemma loaded once via lifespan, Gemini
+client initialized at startup. i18n middleware mirrors Go backend pattern.
+Structured JSON logging, unified error envelope.
+Reachable only inside the Docker backend network — never exposed publicly.
 """
 
 import time
@@ -14,37 +15,39 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from huggingface_hub import login as hf_login
+from google import genai
+from sentence_transformers import SentenceTransformer
 
 from app import codes
 from app.config import settings
 from app.errors import AppError, http_status_for
+from app.gemini import GeminiClient
 from app.logger import get_logger
 from app.routes import router
 
 log = get_logger("main")
 
+SUPPORTED_LANGS = {"id", "en"}
+DEFAULT_LANG = "id"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Load EasyOCR + LaBSE once at startup."""
-    log.info(
-        "loading models",
-        extra={"extra_fields": {"phase": "startup", "model_dir": settings.model_dir}},
-    )
+    """Load EmbeddingGemma + initialize Gemini client at startup."""
+    log.info("loading models", extra={"extra_fields": {"phase": "startup"}})
     app.state.models_loaded = False
 
-    import easyocr
-    from sentence_transformers import SentenceTransformer
+    hf_login(token=settings.hf_token)
+    app.state.gemini_raw_client = genai.Client(api_key=settings.gemini_api_key)
+    app.state.gemini_client = GeminiClient(
+        app.state.gemini_raw_client,
+        extraction_model=settings.extraction_model,
+        retry_wait_seconds=settings.retry_wait_seconds,
+    )
 
-    app.state.easyocr_reader = easyocr.Reader(
-        settings.easyocr_langs,
-        gpu=False,
-        model_storage_directory=f"{settings.model_dir}/easyocr",
-    )
-    app.state.embedding_model = SentenceTransformer(
-        f"{settings.model_dir}/labse",
-        device="cpu",
-    )
+    log.info("loading embedding model", extra={"extra_fields": {"model": settings.embedding_model_id}})
+    app.state.embedding_model = SentenceTransformer(settings.embedding_model_id, device="cpu")
 
     app.state.models_loaded = True
     log.info("models ready", extra={"extra_fields": {"phase": "ready"}})
@@ -55,58 +58,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def register_error_handlers(app: FastAPI) -> None:
-    """Wire AppError, validation, and unhandled-exception handlers to the
-    unified Response envelope shape."""
-
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         return JSONResponse(
             status_code=http_status_for(exc.code),
-            content={
-                "code": exc.code,
-                "message": exc.message,
-                "errors": exc.errors,
-            },
+            content={"code": exc.code, "message": exc.message, "errors": exc.errors},
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_error_handler(
-        request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         field_errors: dict[str, list[str]] = {}
         for err in exc.errors():
             loc = ".".join(str(p) for p in err["loc"][1:]) or "body"
             field_errors.setdefault(loc, []).append(err["msg"])
         return JSONResponse(
             status_code=400,
-            content={
-                "code": codes.CODE_AI_VALIDATION,
-                "message": "Validation failed",
-                "errors": field_errors,
-            },
+            content={"code": codes.CODE_AI_VALIDATION, "message": "Validation failed", "errors": field_errors},
         )
 
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
-        log.exception(
-            "unhandled error",
-            extra={"extra_fields": {"path": request.url.path}},
-        )
+        log.exception("unhandled error", extra={"extra_fields": {"path": request.url.path}})
         return JSONResponse(
             status_code=500,
-            content={
-                "code": codes.CODE_AI_INTERNAL,
-                "message": "Internal server error",
-            },
+            content={"code": codes.CODE_AI_INTERNAL, "message": "Internal server error"},
         )
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(
-        title="CredChain Python AI Service",
-        version="0.1.0",
-        lifespan=lifespan,
-    )
+    app = FastAPI(title="CredChain Python AI Service", version="0.2.0", lifespan=lifespan)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allow_origins,
@@ -116,9 +97,17 @@ def create_app() -> FastAPI:
     )
 
     @app.middleware("http")
+    async def i18n_middleware(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        accept_lang = request.headers.get("Accept-Language", "").strip()
+        lang = accept_lang.split(",")[0].split(";")[0].strip().lower()
+        request.state.lang = lang if lang in SUPPORTED_LANGS else DEFAULT_LANG
+        return await call_next(request)
+
+    @app.middleware("http")
     async def request_logging_middleware(
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
+        request: Request, call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         request.state.request_id = str(uuid.uuid4())
         start = time.perf_counter()
