@@ -48,7 +48,7 @@
                     { "key": "Content-Type", "value": "application/json" }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500900,\n    \"message\": \"healthy\",\n    \"data\": {\n        \"message\": \"healthy\"\n    }\n}"
+                  "body": "{\n    \"code\": 500900,\n    \"message\": \"healthy\"\n}"
                 },
                 {
                   "name": "500950 Model Loading",
@@ -60,7 +60,7 @@
                     { "key": "Content-Type", "value": "application/json" }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500950,\n    \"message\": \"model loading\",\n    \"data\": {\n        \"message\": \"model loading\"\n    }\n}"
+                  "body": "{\n    \"code\": 500950,\n    \"message\": \"model loading\"\n}"
                 }
               ]
             }
