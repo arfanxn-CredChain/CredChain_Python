@@ -1,5 +1,7 @@
 """Tests for app/schemas.py — Pydantic models."""
 
+from typing import Any
+
 from app.schemas import (
     ExtractData,
     ExtractIdsData,
@@ -11,8 +13,8 @@ from app.schemas import (
 
 
 class TestResponse:
-    def test_minimal_success(self):
-        r = Response(code=500100, message="ok")
+    def test_minimal_success(self) -> None:
+        r: Response[Any] = Response(code=500100, message="ok")
         assert r.code == 500100
         assert r.message == "ok"
         assert r.data is None
@@ -22,8 +24,8 @@ class TestResponse:
         r = Response(code=500100, message="ok", data={"key": "val"})
         assert r.data == {"key": "val"}
 
-    def test_with_errors(self):
-        r = Response(code=500040, message="fail", errors={"file": ["bad"]})
+    def test_with_errors(self) -> None:
+        r: Response[Any] = Response(code=500040, message="fail", errors={"file": ["bad"]})
         assert r.errors == {"file": ["bad"]}
 
 

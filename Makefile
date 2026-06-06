@@ -17,7 +17,7 @@ lint:
 	ruff check
 
 typecheck:
-	mypy
+	mypy app/ tests/
 
 format:
 	ruff format .

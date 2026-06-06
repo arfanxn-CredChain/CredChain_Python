@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
@@ -86,11 +87,11 @@ def validate_files(files: list[UploadFile]) -> None:
         )
 
 
-def get_embedding_model(request: Request):
+def get_embedding_model(request: Request) -> Any:
     return request.app.state.embedding_model
 
 
-def get_gemini_client(request: Request):
+def get_gemini_client(request: Request) -> Any:
     return request.app.state.gemini_client
 
 
@@ -98,7 +99,7 @@ def get_lang(request: Request) -> str:
     return getattr(request.state, "lang", "id")
 
 
-@router.post("/extract", response_model=schemas.Response[list[schemas.ExtractData | None]])
+@router.post("/extract", response_model=schemas.Response[list[schemas.ExtractData | None]])  # type: ignore[no-untyped-def]
 async def extract(
     files: list[UploadFile] = File(...),
     gemini_client=Depends(get_gemini_client),
@@ -126,7 +127,7 @@ async def extract(
             results = await asyncio.to_thread(
                 gemini_client.extract_with_files_api, file_dict, PROMPT_EXTRACT_DOCUMENT
             )
-            result_map: dict[int, tuple[str, dict]] = {}
+            result_map: dict[int, tuple[str, dict[str, Any]]] = {}
             for name, raw in results:
                 result_map[file_map[name]] = (name, raw)
 
@@ -138,7 +139,7 @@ async def extract(
                     emb = await asyncio.to_thread(embeddings.encode, embed_model, raw_text)
                     data[i] = schemas.ExtractData(raw_text=raw_text, ids=ids, embeddings=emb)
                     success_count += 1
-                elif i not in errors:
+                else:
                     errors.setdefault(f"files.{i}", []).append("Gemini extraction failed")
         except Exception:
             log.exception("Gemini extraction failed")
@@ -155,7 +156,7 @@ async def extract(
     return schemas.Response(code=code, message=message, data=data, errors=errors or None)
 
 
-@router.post("/verify", response_model=schemas.Response[list[schemas.VerifyData | None]])
+@router.post("/verify", response_model=schemas.Response[list[schemas.VerifyData | None]])  # type: ignore[no-untyped-def]
 async def verify(
     request: Request,
     files: list[UploadFile] = File(...),
@@ -211,7 +212,7 @@ async def verify(
     return schemas.Response(code=code, message=message, data=data, errors=errors or None)
 
 
-@router.post("/extract-ids", response_model=schemas.Response[list[schemas.ExtractIdsData | None]])
+@router.post("/extract-ids", response_model=schemas.Response[list[schemas.ExtractIdsData | None]])  # type: ignore[no-untyped-def]
 async def extract_ids(
     files: list[UploadFile] = File(...),
     gemini_client=Depends(get_gemini_client),

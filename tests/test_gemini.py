@@ -10,8 +10,7 @@ from app.gemini import GeminiClient
 
 @pytest.fixture
 def mock_genai_client():
-    client = MagicMock()
-    return client
+    return MagicMock()
 
 
 class TestGeminiClient:

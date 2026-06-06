@@ -15,8 +15,8 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from huggingface_hub import login as hf_login
 from google import genai
+from huggingface_hub import login as hf_login
 from sentence_transformers import SentenceTransformer
 
 from app import codes
@@ -46,7 +46,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         retry_wait_seconds=settings.retry_wait_seconds,
     )
 
-    log.info("loading embedding model", extra={"extra_fields": {"model": settings.embedding_model_id}})
+    log.info(
+        "loading embedding model",
+        extra={"extra_fields": {"model": settings.embedding_model_id}},
+    )
     app.state.embedding_model = SentenceTransformer(settings.embedding_model_id, device="cpu")
 
     app.state.models_loaded = True
@@ -66,14 +69,20 @@ def register_error_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    async def validation_error_handler(
+        request: Request, exc: RequestValidationError,
+    ) -> JSONResponse:
         field_errors: dict[str, list[str]] = {}
         for err in exc.errors():
             loc = ".".join(str(p) for p in err["loc"][1:]) or "body"
             field_errors.setdefault(loc, []).append(err["msg"])
         return JSONResponse(
             status_code=400,
-            content={"code": codes.CODE_AI_VALIDATION, "message": "Validation failed", "errors": field_errors},
+            content={
+                "code": codes.CODE_AI_VALIDATION,
+                "message": "Validation failed",
+                "errors": field_errors,
+            },
         )
 
     @app.exception_handler(Exception)
