@@ -322,7 +322,7 @@
           "name": "Verify",
           "item": [
             {
-              "name": "Verify Document (English)",
+              "name": "Verify Document",
               "event": [
                 {
                   "listen": "test",
@@ -397,7 +397,7 @@
               },
               "response": [
                 {
-                  "name": "500200 Single File Success (English)",
+                  "name": "500200 Single File Success",
                   "originalRequest": {},
                   "status": "OK",
                   "code": 200,
