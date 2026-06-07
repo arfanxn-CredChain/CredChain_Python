@@ -26,6 +26,8 @@ make format                                               # ruff format
 make docker-up-build                                      # docker compose up -d --build
 make docker-down                                          # docker compose down
 make docker-fresh                                         # down + up-build + ps
+make generate-api-key                                      # generate 64-char hex API key → .env
+make docker-generate-api-key                               # generate 64-char hex API key → .env.docker
 ```
 
 No CI pipeline is configured.
@@ -60,6 +62,8 @@ Pinned in `pyproject.toml`:
 | HuggingFace | huggingface-hub | — |
 | Math | numpy | — |
 | Image | Pillow | 11.0.0 |
+| Rate limiting | slowapi | — |
+| CLI | typer | — |
 | Test | pytest | 8.3.4 |
 | Async test | pytest-asyncio | 0.24.0 |
 | HTTP test | httpx | 0.28.1 |
@@ -89,11 +93,10 @@ CredChain_Python/
     middleware.py       → slowapi rate limiter (1200/min, IP-keyed) + API key authentication middleware
     cli.py              → Typer CLI — `generate-api-key` command for API key generation
   tests/                → conftest.py + test files (fully mocked)
-    fixtures/           → shared test data
   locales/              → tracked, JSON locale files (id, en) for description templates
   pyproject.toml        → pinned deps + ruff + mypy + pytest config
   Makefile              → all critical commands
-  Dockerfile            → multi-stage Python 3.11-slim build
+  Dockerfile            → single-stage Python 3.11-slim build
   docker-compose.yml    → AI service + backend network attach
   .env / .env.docker / .env.example
   README.md
@@ -267,8 +270,6 @@ make docker-generate-api-key # writes to .env.docker
 
 Implemented via Typer in `app/cli.py` using `secrets.token_hex(32)`. The `--env`/`-e` flag specifies the target file. Finds `API_KEY=` line and replaces; appends if not found. Prints the generated key to stdout.
 
-Supported languages: `id` (Indonesian, default), `en` (English). Unknown or missing `Accept-Language` falls back to `id`. Handlers read the resolved language via `get_lang(request)` → `request.state.lang`.
-
 ### Custom Env CSV Source
 
 `pydantic-settings 2.6.1` does not export `NoDecode`, which breaks list-of-string env parsing. `app/config.py` defines `_CsvEnvSettingsSource` and `_CsvDotEnvSettingsSource` that pre-split comma-separated values for `cors_allow_origins` before pydantic-settings sees them.
@@ -285,6 +286,7 @@ Supported languages: `id` (Indonesian, default), `en` (English). Unknown or miss
 | `RETRY_WAIT_SECONDS` | `60` | Delay between Gemini rate-limit retries |
 | `HF_TOKEN` | — | HuggingFace token for gated model access |
 | `EMBEDDING_MODEL_ID` | `google/embeddinggemma-300M` | HuggingFace model ID for embeddings |
+| `API_KEY` | — | Shared secret for X-API-Key authentication (empty = disabled) |
 | `VERDICT_TAMPERED_THRESHOLD` | `0.95` | Cosine similarity ≥ this → tampered |
 | `VERDICT_SUSPICIOUS_THRESHOLD` | `0.75` | Cosine similarity ≥ this → suspicious |
 | `VERDICT_LOW_SIMILARITY_THRESHOLD` | `0.55` | Cosine similarity ≥ this → low_similarity |
