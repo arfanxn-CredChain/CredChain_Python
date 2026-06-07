@@ -10,7 +10,7 @@ Sibling to `CredChain_Golang/` (backend, sole HTTP caller), `CredChain_Solidity/
 
 - **Consumer:** the Go backend is the only intended caller. Requests flow `React → Go API → Python AI`. The frontend never talks to this service directly.
 - **Locales:** `locales/{en,id}.json` are tracked and kept in sync with the corresponding files in `CredChain_Golang/locales/`.
-- **Network isolation:** the service binds inside the Docker backend network only. There is no auth middleware, no rate limiter, no CORS protection beyond the configurable `CORS_ALLOW_ORIGINS` — exposing it publicly would allow arbitrary Gemini execution against arbitrary input.
+- **Network isolation:** the service binds inside the Docker backend network only. X-API-Key authentication required on POST endpoints via middleware. Rate-limited at 1200 req/min per IP via slowapi ASGI middleware. CORS configured via `CORS_ALLOW_ORIGINS` env var — exposing it publicly would allow arbitrary Gemini execution against arbitrary input.
 
 ## Critical Commands
 
@@ -68,7 +68,7 @@ Pinned in `pyproject.toml`:
 
 ## Project Architecture
 
-Flat layout under `app/`. 12 source modules + `tests/`:
+Flat layout under `app/`. 14 source modules + `tests/`:
 
 ```
 CredChain_Python/
@@ -86,7 +86,7 @@ CredChain_Python/
     i18n.py             → locale loader + localize(key, lang, **vars)
     verdict.py          → similarity → verdict mapping (configurable thresholds)
     prompts.py          → Gemini prompt constants (PROMPT_EXTRACT_DOCUMENT, PROMPT_EXTRACT_IDS)
-    middleware.py       → slowapi rate limiter (1200/min, IP-keyed) + API key authentication dependency
+    middleware.py       → slowapi rate limiter (1200/min, IP-keyed) + API key authentication middleware
     cli.py              → Typer CLI — `generate-api-key` command for API key generation
   tests/                → conftest.py + test files (fully mocked)
     fixtures/           → shared test data
@@ -137,18 +137,18 @@ Upload limit: 10 MB per file. Allowed MIME: `application/pdf`, `image/{jpeg,png,
 - Top-level `code` is the success code when ≥1 file succeeded; an error code when all failed.
 - Shape mirrors the Go backend's `{code, message, data, errors}` envelope — same wire contract.
 
-### `/verify` Compared Embeddings
+### `/verify` Request Format
 
-`/verify` accepts `reference_files` (multipart) and `compared_embeddings` (JSON string of float arrays). Each file pairs positionally with one embedding array:
+`/verify` accepts `files` (multipart) and `embeddings` (JSON string of float arrays). Each file pairs positionally with one embedding array:
 
 ```
 POST /verify
-reference_files: <file0.pdf>
-reference_files: <file1.pdf>
-compared_embeddings: [[0.1, ...], [0.3, ...]]
+files: <file0.pdf>
+files: <file1.pdf>
+embeddings: [[0.1, ...], [0.3, ...]]
 ```
 
-`len(reference_files) == len(compared_embeddings)` is required; mismatch returns HTTP 400 code `500241`. `parse_compared_embeddings` in `routes.py` validates the JSON shape and raises `AppError` on malformed input.
+`len(files) == len(embeddings)` is required; mismatch returns HTTP 400 code `500241`. `parse_embeddings` in `routes.py` validates the JSON shape and raises `AppError` on malformed input.
 
 ### Gemini Pipeline (Files API vs Direct Upload)
 
@@ -218,16 +218,19 @@ async def i18n_middleware(request, call_next):
 
 ### API Key Authentication
 
-POST endpoints (`/extract`, `/verify`, `/extract-ids`) require an `X-API-Key` header matching `settings.api_key`. The `/health` endpoint is exempt — no authentication required. If `API_KEY` is empty in the env file, authentication is disabled (no-op).
+POST endpoints (`/extract`, `/verify`, `/extract-ids`) require an `X-API-Key` header matching `settings.api_key`. The `/health` endpoint is exempt. If `API_KEY` is empty in the env file, authentication is disabled.
 
-The `api_key_dependency` function in `app/middleware.py` validates the header via FastAPI `Depends()`:
+The `api_key_middleware` function in `main.py` validates the header as an HTTP middleware (registered via `@app.middleware("http")`):
 
 ```python
-def api_key_dependency(x_api_key: str = Header(None, alias="x-api-key")) -> None:
-    if not settings.api_key:
-        return
-    if x_api_key != settings.api_key:
-        raise AppError(CODE_AI_UNAUTHORIZED)  # 401
+@app.middleware("http")
+async def api_key_middleware(request, call_next):
+    if request.url.path == "/health" or not settings.api_key:
+        return await call_next(request)
+    if request.headers.get("x-api-key", "") != settings.api_key:
+        return JSONResponse(status_code=401, content={
+            "code": 500010, "message": "Invalid or missing API key"})
+    return await call_next(request)
 ```
 
 ### Rate Limiting
