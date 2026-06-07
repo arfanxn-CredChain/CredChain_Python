@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "a7f3c1d9-4b2e-48a5-9f6d-8e1c3a5b7d0f",
-    "name": "CredChain Python AI",
-    "description": "CredChain Python AI Service collection. All endpoints under / — Extract (Gemini OCR + LaBSE embedding), Verify (cosine similarity + bilingual description), Extract IDs (regex-based), Health (liveness). X-API-Key required on POST endpoints. Reachable only inside the Docker backend network.",
+    "name": "CredChain Python",
+    "description": "CredChain Python AI Service collection. All endpoints under / \u2014 Extract (Gemini OCR + LaBSE embedding), Verify (cosine similarity + bilingual description), Extract IDs (regex-based), Health (liveness). X-API-Key required on POST endpoints. Reachable only inside the Docker backend network.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "17284024"
   },
@@ -398,7 +398,7 @@
                     "verify"
                   ]
                 },
-                "description": "Verify reference documents against stored embeddings. Accepts files (multipart) and embeddings (JSON string of float arrays). Each file pairs positionally with one embedding array. Accept-Language header controls description language (en/id). Verdict thresholds: ≥0.95 tampered, ≥0.75 suspicious, ≥0.55 low_similarity, <0.55 not_similar."
+                "description": "Verify reference documents against stored embeddings. Accepts files (multipart) and embeddings (JSON string of float arrays). Each file pairs positionally with one embedding array. Accept-Language header controls description language (en/id). Verdict thresholds: \u22650.95 tampered, \u22650.75 suspicious, \u22650.55 low_similarity, <0.55 not_similar."
               },
               "response": [
                 {
