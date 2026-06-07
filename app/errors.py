@@ -4,8 +4,10 @@ from app import codes
 
 DEFAULT_MESSAGES: dict[int, str] = {
     codes.CODE_AI_SUCCESS: "Success",
+    codes.CODE_AI_UNAUTHORIZED: "Invalid or missing API key",
     codes.CODE_AI_VALIDATION: "Validation failed",
     codes.CODE_AI_INTERNAL: "Internal server error",
+    codes.CODE_AI_RATE_LIMITED: "Too many requests",
     codes.CODE_AI_EXTRACT_SUCCESS: "Document extracted successfully",
     codes.CODE_AI_EXTRACT_OCR_FAILED: "OCR failed during extraction",
     codes.CODE_AI_GEMINI_FAILED: "Gemini API request failed",
@@ -50,6 +52,10 @@ def http_status_for(code: int) -> int:
       xx50 / xx51+ -> 500 Internal Server Error (internal failure)
     """
     status_suffix = code % 100
+    if code == codes.CODE_AI_UNAUTHORIZED:
+        return 401
+    if code == codes.CODE_AI_RATE_LIMITED:
+        return 429
     if status_suffix < 20:
         return 200
     if 40 <= status_suffix < 50:

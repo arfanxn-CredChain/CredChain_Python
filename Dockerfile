@@ -8,10 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget && \
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e "."
-
 COPY app/ app/
 COPY locales/ locales/
+
+RUN pip install --no-cache-dir -e "."
 
 EXPOSE 8081
 

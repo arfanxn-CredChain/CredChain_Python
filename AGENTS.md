@@ -1,6 +1,6 @@
 # CredChain Python - Agent Instructions
 
-Python AI service called by the Go backend over HTTP. Uses Google Gemini (Files API + direct upload) for document extraction and EmbeddingGemma (sentence-transformers) for semantic similarity embeddings. Requires a Gemini API key — no longer fully offline. Reachable only inside the Docker backend network — **never expose to public internet** (no auth, no rate limiting).
+Python AI service called by the Go backend over HTTP. Uses Google Gemini (Files API + direct upload) for document extraction and EmbeddingGemma (sentence-transformers) for semantic similarity embeddings. Requires a Gemini API key — no longer fully offline. API key authentication required on POST endpoints. Rate-limited at 1200 req/min per IP (burst 100) via slowapi. Reachable only inside the Docker backend network — **never expose to public internet**.
 
 This file is the authoritative reference for AI assistants and engineers working in `CredChain_Python/`.
 
@@ -86,6 +86,8 @@ CredChain_Python/
     i18n.py             → locale loader + localize(key, lang, **vars)
     verdict.py          → similarity → verdict mapping (configurable thresholds)
     prompts.py          → Gemini prompt constants (PROMPT_EXTRACT_DOCUMENT, PROMPT_EXTRACT_IDS)
+    middleware.py       → slowapi rate limiter (1200/min, IP-keyed) + API key authentication dependency
+    cli.py              → Typer CLI — `generate-api-key` command for API key generation
   tests/                → conftest.py + test files (fully mocked)
     fixtures/           → shared test data
   locales/              → tracked, JSON locale files (id, en) for description templates
@@ -213,6 +215,54 @@ async def i18n_middleware(request, call_next):
     request.state.lang = lang if lang in {"id", "en"} else "id"
     return await call_next(request)
 ```
+
+### API Key Authentication
+
+POST endpoints (`/extract`, `/verify`, `/extract-ids`) require an `X-API-Key` header matching `settings.api_key`. The `/health` endpoint is exempt — no authentication required. If `API_KEY` is empty in the env file, authentication is disabled (no-op).
+
+The `api_key_dependency` function in `app/middleware.py` validates the header via FastAPI `Depends()`:
+
+```python
+def api_key_dependency(x_api_key: str = Header(None, alias="x-api-key")) -> None:
+    if not settings.api_key:
+        return
+    if x_api_key != settings.api_key:
+        raise AppError(CODE_AI_UNAUTHORIZED)  # 401
+```
+
+### Rate Limiting
+
+Global rate limiter via slowapi (ASGI middleware), keyed by IP address — mirrors the Go backend's `ApiRateLimitMiddleware`:
+
+| Limit | Burst | Key | Scope |
+|---|---|---|---|
+| 1200 req/min | 100 | `get_remote_address` (IP) | All routes |
+
+Configuration in `app/middleware.py`:
+
+```python
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["1200/minute"],
+    headers_enabled=True,
+)
+```
+
+Registered as `SlowAPIASGIMiddleware` in `main.py`. Rate-limit exceeded returns `{code: 500051, message: "Too many requests"}` with HTTP 429.
+
+### CLI — API Key Generation
+
+Generate a 64-char hex API key and write it to an env file:
+
+```bash
+make generate-api-key       # writes to .env
+make docker-generate-api-key # writes to .env.docker
+```
+
+Implemented via Typer in `app/cli.py` using `secrets.token_hex(32)`. The `--env`/`-e` flag specifies the target file. Finds `API_KEY=` line and replaces; appends if not found. Prints the generated key to stdout.
 
 Supported languages: `id` (Indonesian, default), `en` (English). Unknown or missing `Accept-Language` falls back to `id`. Handlers read the resolved language via `get_lang(request)` → `request.state.lang`.
 

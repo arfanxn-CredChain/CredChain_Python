@@ -1,5 +1,6 @@
 .PHONY: install serve dev test lint typecheck format \
-	docker-up docker-up-build docker-down docker-logs docker-ps docker-fresh
+	docker-up docker-up-build docker-down docker-logs docker-ps docker-fresh \
+	generate-api-key docker-generate-api-key
 
 install:
 	pip install -e ".[dev]"
@@ -39,3 +40,9 @@ docker-ps:
 
 docker-fresh:
 	docker compose down && docker compose up -d --build && docker compose ps
+
+generate-api-key:
+	python -m app.cli --env .env
+
+docker-generate-api-key:
+	python -m app.cli --env .env.docker

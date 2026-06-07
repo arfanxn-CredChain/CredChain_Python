@@ -18,12 +18,15 @@ from fastapi.responses import JSONResponse, Response
 from google import genai
 from huggingface_hub import login as hf_login
 from sentence_transformers import SentenceTransformer
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIASGIMiddleware
 
 from app import codes
 from app.config import settings
 from app.errors import AppError, http_status_for
 from app.gemini import GeminiClient
 from app.logger import get_logger
+from app.middleware import limiter, rate_limit_exceeded_handler
 from app.routes import router
 
 log = get_logger("main")
@@ -85,6 +88,11 @@ def register_error_handlers(app: FastAPI) -> None:
             },
         )
 
+    @app.exception_handler(RateLimitExceeded)
+    async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+        body = await rate_limit_exceeded_handler(request, exc)
+        return JSONResponse(status_code=429, content=body)
+
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
         log.exception("unhandled error", extra={"extra_fields": {"path": request.url.path}})
@@ -104,6 +112,25 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         allow_credentials=False,
     )
+
+    app.state.limiter = limiter
+    app.add_middleware(SlowAPIASGIMiddleware)
+
+    @app.middleware("http")
+    async def api_key_middleware(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        if request.url.path == "/health" or not settings.api_key:
+            return await call_next(request)
+        if request.headers.get("x-api-key", "") != settings.api_key:
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "code": codes.CODE_AI_UNAUTHORIZED,
+                    "message": "Invalid or missing API key",
+                },
+            )
+        return await call_next(request)
 
     @app.middleware("http")
     async def i18n_middleware(

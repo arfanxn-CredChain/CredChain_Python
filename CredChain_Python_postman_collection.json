@@ -113,7 +113,14 @@
               ],
               "request": {
                 "method": "POST",
-                "header": [],
+                "header": [
+                  {
+                    "key": "x-api-key",
+                    "value": "{{API_KEY}}",
+                    "type": "text",
+                    "description": "API key for service authentication"
+                  }
+                ],
                 "body": {
                   "mode": "formdata",
                   "formdata": [
@@ -290,6 +297,12 @@
               "request": {
                 "method": "POST",
                 "header": [
+                  {
+                    "key": "x-api-key",
+                    "value": "{{API_KEY}}",
+                    "type": "text",
+                    "description": "API key for service authentication"
+                  },
                   {
                     "key": "Accept-Language",
                     "value": "en",
@@ -519,7 +532,14 @@
               ],
               "request": {
                 "method": "POST",
-                "header": [],
+                "header": [
+                  {
+                    "key": "x-api-key",
+                    "value": "{{API_KEY}}",
+                    "type": "text",
+                    "description": "API key for service authentication"
+                  }
+                ],
                 "body": {
                   "mode": "formdata",
                   "formdata": [
@@ -689,6 +709,11 @@
     },
     {
       "key": "COMPARED_EMBEDDING",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "API_KEY",
       "value": "",
       "type": "string"
     }

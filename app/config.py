@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     hf_token: str = ""
     embedding_model_id: str = "google/embeddinggemma-300M"
 
+    api_key: str = ""
+
     verdict_tampered_threshold: float = 0.95
     verdict_suspicious_threshold: float = 0.75
     verdict_low_similarity_threshold: float = 0.55
