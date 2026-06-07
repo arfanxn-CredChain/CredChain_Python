@@ -120,7 +120,7 @@ class TestVerifyEndpoint:
         assert len(body["data"]) == 1
         assert "similarity_score" in body["data"][0]
         assert "verdict" in body["data"][0]
-        assert "description" in body["data"][0]
+        assert "descriptions" in body["data"][0]
 
     def test_verify_metadata_mismatch(self, client, sample_pdf_bytes):
         compared = json.dumps([[0.1], [0.2]])

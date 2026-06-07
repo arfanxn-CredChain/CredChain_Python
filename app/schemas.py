@@ -26,11 +26,11 @@ class ExtractData(BaseModel):
 
 
 class VerifyData(BaseModel):
-    """Payload returned from POST /verify. Description is single-language string."""
+    """Payload returned from POST /verify. Descriptions are bilingual {en, id}."""
     similarity_score: float
     similarity_percent: str
     verdict: str
-    description: str
+    descriptions: dict[str, str]
 
 
 class ExtractIdsData(BaseModel):

@@ -49,12 +49,14 @@ class TestVerifyData:
             similarity_score=0.95,
             similarity_percent="95.0%",
             verdict="tampered",
-            description="This document looks almost identical...",
+            descriptions={"en": "test", "id": "uji"},
         )
         assert d.similarity_score == 0.95
         assert d.similarity_percent == "95.0%"
         assert d.verdict == "tampered"
-        assert isinstance(d.description, str)
+        assert isinstance(d.descriptions, dict)
+        assert d.descriptions["en"] == "test"
+        assert d.descriptions["id"] == "uji"
 
 
 class TestExtractIdsData:

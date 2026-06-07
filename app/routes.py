@@ -165,7 +165,6 @@ async def verify(
 ) -> schemas.Response[list[schemas.VerifyData | None]]:
     validate_files(files)
     stored = parse_embeddings(embeddings, expected_len=len(files))
-    lang = get_lang(request)
     data: list[schemas.VerifyData | None] = []
     errors: dict[str, list[str]] = {}
     success_count = 0
@@ -185,10 +184,10 @@ async def verify(
             similarity = emb_mod.cosine_similarity(embeddings_list, stored_embedding)
             verdict_label = verdict.verdict_for(similarity)
             sim_percent = verdict.format_percent(similarity)
-            desc = desc_module.build_description(verdict_label, sim_percent, lang)
+            descs = desc_module.build_description(verdict_label, sim_percent)
             data.append(schemas.VerifyData(
                 similarity_score=similarity, similarity_percent=sim_percent,
-                verdict=verdict_label, description=desc,
+                verdict=verdict_label, descriptions=descs,
             ))
             success_count += 1
         except AppError as exc:
