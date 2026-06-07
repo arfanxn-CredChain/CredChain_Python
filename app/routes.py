@@ -7,8 +7,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 
-from app import codes, embeddings, schemas, verdict
+from app import codes, schemas, verdict
 from app import description as desc_module
+from app import embeddings as emb_mod
 from app.config import settings
 from app.errors import AppError
 from app.logger import get_logger
@@ -41,23 +42,23 @@ def validate_file(file: UploadFile) -> tuple[bytes, str]:
     return contents, file.content_type
 
 
-def parse_compared_embeddings(raw: str, expected_len: int) -> list[list[float]]:
+def parse_embeddings(raw: str, expected_len: int) -> list[list[float]]:
     try:
         parsed: list = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise AppError(
             codes.CODE_AI_VERIFY_INVALID_INPUT,
-            errors={"compared_embeddings": [str(exc)]},
+            errors={"embeddings": [str(exc)]},
         ) from exc
     if not isinstance(parsed, list):
         raise AppError(
             codes.CODE_AI_VERIFY_INVALID_INPUT,
-            errors={"compared_embeddings": ["Must be a JSON array"]},
+            errors={"embeddings": ["Must be a JSON array"]},
         )
     if len(parsed) != expected_len:
         raise AppError(
             codes.CODE_AI_VERIFY_INVALID_INPUT,
-            errors={"compared_embeddings": [
+            errors={"embeddings": [
                 f"Length mismatch: {len(parsed)} vs {expected_len}"
             ]},
         )
@@ -66,7 +67,7 @@ def parse_compared_embeddings(raw: str, expected_len: int) -> list[list[float]]:
         if not isinstance(v, list):
             raise AppError(
                 codes.CODE_AI_VERIFY_INVALID_INPUT,
-                errors={f"compared_embeddings.{i}": ["Must be a list of floats"]},
+                errors={f"embeddings.{i}": ["Must be a list of floats"]},
             )
         result.append([float(x) for x in v])
     return result
@@ -134,7 +135,7 @@ async def extract(
                     _, raw = result_map[i]
                     raw_text = raw.get("raw_text", "")
                     ids = raw.get("ids", [])
-                    emb = await asyncio.to_thread(embeddings.encode, embed_model, raw_text)
+                    emb = await asyncio.to_thread(emb_mod.encode, embed_model, raw_text)
                     data[i] = schemas.ExtractData(text=raw_text, ids=ids, embedding=emb)
                     success_count += 1
                 else:
@@ -157,19 +158,19 @@ async def extract(
 @router.post("/verify", response_model=schemas.Response[list[schemas.VerifyData | None]])  # type: ignore[no-untyped-def]
 async def verify(
     request: Request,
-    reference_files: list[UploadFile] = File(...),
-    compared_embeddings: str = Form(...),
+    files: list[UploadFile] = File(...),
+    embeddings: str = Form(...),
     gemini_client=Depends(get_gemini_client),
     embed_model=Depends(get_embedding_model),
 ) -> schemas.Response[list[schemas.VerifyData | None]]:
-    validate_files(reference_files)
-    stored = parse_compared_embeddings(compared_embeddings, expected_len=len(reference_files))
+    validate_files(files)
+    stored = parse_embeddings(embeddings, expected_len=len(files))
     lang = get_lang(request)
     data: list[schemas.VerifyData | None] = []
     errors: dict[str, list[str]] = {}
     success_count = 0
 
-    for i, (file, stored_embedding) in enumerate(zip(reference_files, stored, strict=True)):
+    for i, (file, stored_embedding) in enumerate(zip(files, stored, strict=True)):
         try:
             file_bytes, mime_type = validate_file(file)
             raw = await asyncio.to_thread(
@@ -178,10 +179,10 @@ async def verify(
             raw_text = raw.get("raw_text", "")
             if not raw_text:
                 data.append(None)
-                errors[f"reference_files.{i}"] = ["No text extracted from document"]
+                errors[f"files.{i}"] = ["No text extracted from document"]
                 continue
-            embeddings_list = await asyncio.to_thread(embeddings.encode, embed_model, raw_text)
-            similarity = embeddings.cosine_similarity(embeddings_list, stored_embedding)
+            embeddings_list = await asyncio.to_thread(emb_mod.encode, embed_model, raw_text)
+            similarity = emb_mod.cosine_similarity(embeddings_list, stored_embedding)
             verdict_label = verdict.verdict_for(similarity)
             sim_percent = verdict.format_percent(similarity)
             desc = desc_module.build_description(verdict_label, sim_percent, lang)
@@ -192,20 +193,20 @@ async def verify(
             success_count += 1
         except AppError as exc:
             data.append(None)
-            errors[f"reference_files.{i}"] = [exc.message]
+            errors[f"files.{i}"] = [exc.message]
         except Exception:
             data.append(None)
             log.exception(
                 "unhandled per-file error",
                 extra={"extra_fields": {"file_index": i, "filename": file.filename}},
             )
-            errors[f"reference_files.{i}"] = ["Internal error processing file"]
+            errors[f"files.{i}"] = ["Internal error processing file"]
 
     code = codes.CODE_AI_VERIFY_SUCCESS if success_count > 0 else codes.CODE_AI_VERIFY_OCR_FAILED
     message = (
         "Verification(s) completed"
-        if success_count == len(reference_files)
-        else f"{success_count}/{len(reference_files)} files verified"
+        if success_count == len(files)
+        else f"{success_count}/{len(files)} files verified"
     )
     return schemas.Response(code=code, message=message, data=data, errors=errors or None)
 

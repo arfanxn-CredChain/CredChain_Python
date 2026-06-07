@@ -110,8 +110,8 @@ class TestVerifyEndpoint:
         ):
             response = client.post(
                 "/verify",
-                files=[("reference_files", ("test.pdf", sample_pdf_bytes, "application/pdf"))],
-                data={"compared_embeddings": compared},
+                files=[("files", ("test.pdf", sample_pdf_bytes, "application/pdf"))],
+                data={"embeddings": compared},
             )
 
         assert response.status_code == 200
@@ -127,8 +127,8 @@ class TestVerifyEndpoint:
 
         response = client.post(
             "/verify",
-            files=[("reference_files", ("test.pdf", sample_pdf_bytes, "application/pdf"))],
-            data={"compared_embeddings": compared},
+            files=[("files", ("test.pdf", sample_pdf_bytes, "application/pdf"))],
+            data={"embeddings": compared},
         )
 
         assert response.status_code == 400
