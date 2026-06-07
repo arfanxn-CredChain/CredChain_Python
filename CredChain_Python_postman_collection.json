@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a7f3c1d9-4b2e-48a5-9f6d-8e1c3a5b7d0f",
     "name": "CredChain Python AI",
-    "description": "CredChain Python AI Service collection. All endpoints under / \u2014 Extract (Gemini OCR + LaBSE embedding), Verify (cosine similarity + bilingual description), Extract IDs (regex-based), Health (liveness). No auth required. Reachable only inside the Docker backend network.",
+    "description": "CredChain Python AI Service collection. All endpoints under / — Extract (Gemini OCR + LaBSE embedding), Verify (cosine similarity + bilingual description), Extract IDs (regex-based), Health (liveness). X-API-Key required on POST endpoints. Reachable only inside the Docker backend network.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "17284024"
   },
@@ -71,6 +71,21 @@
                   ],
                   "cookie": [],
                   "body": "{\n    \"code\": 500950,\n    \"message\": \"model loading\"\n}"
+                },
+                {
+                  "name": "500051 Rate Limit Exceeded",
+                  "originalRequest": {},
+                  "status": "Too Many Requests",
+                  "code": 429,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\"code\": 500051, \"message\": \"Too many requests\"}"
                 }
               ]
             }
@@ -102,9 +117,14 @@
                   "script": {
                     "exec": [
                       "const r = pm.response.json();",
-                      "if (r.data && r.data.length > 0 && r.data[0].embedding) {",
-                      "    pm.collectionVariables.set(\"COMPARED_EMBEDDING\", JSON.stringify([r.data[0].embedding]));",
-                      "    pm.test(\"Embedding saved to COMPARED_EMBEDDING\", () => pm.expect(pm.collectionVariables.get(\"COMPARED_EMBEDDING\")).to.be.a(\"string\"));",
+                      "if (r.data) {",
+                      "    const embeddings = r.data.filter(item => item !== null).map(item => item.embedding);",
+                      "    if (embeddings.length > 0) {",
+                      "        pm.collectionVariables.set(\"EMBEDDINGS\", JSON.stringify(embeddings));",
+                      "        pm.test(`Saved ${embeddings.length} embedding(s) to EMBEDDINGS`, () => {",
+                      "            pm.expect(embeddings.length).to.be.greaterThan(0);",
+                      "        });",
+                      "    }",
                       "}"
                     ],
                     "type": "text/javascript"
@@ -156,7 +176,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500100,\n    \"message\": \"Document(s) extracted successfully\",\n    \"data\": [\n        {\n            \"raw_text\": \"John Doe\\nPassport No: A12345678\\nDOB: 1990-01-15\",\n            \"ids\": [\n                {\"type\": \"passport\", \"value\": \"A12345678\"}\n            ],\n            \"embeddings\": [0.0123, -0.0456, 0.0789]\n        }\n    ]\n}"
+                  "body": "{\n    \"code\": 500100,\n    \"message\": \"Document(s) extracted successfully\",\n    \"data\": [\n        {\n            \"text\": \"John Doe\\nPassport No: A12345678\\nDOB: 1990-01-15\",\n            \"ids\": [\n                {\"type\": \"passport\", \"value\": \"A12345678\"}\n            ],\n            \"embedding\": [0.0123, -0.0456, 0.0789]\n        }\n    ]\n}"
                 },
                 {
                   "name": "500100 Multi-File Success with Partial Failure",
@@ -171,7 +191,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500100,\n    \"message\": \"2/3 files extracted\",\n    \"data\": [\n        {\n            \"raw_text\": \"First document text\",\n            \"ids\": [],\n            \"embeddings\": [0.01, 0.02] \n        },\n        null,\n        {\n            \"raw_text\": \"Third document text\",\n            \"ids\": [{\"type\": \"nik\", \"value\": \"3271041234567890\"}],\n            \"embeddings\": [0.03, 0.04]\n        }\n    ],\n    \"errors\": {\n        \"files.1\": [\"Gemini extraction failed\"]\n    }\n}"
+                  "body": "{\n    \"code\": 500100,\n    \"message\": \"2/3 files extracted\",\n    \"data\": [\n        {\n            \"text\": \"First document text\",\n            \"ids\": [],\n            \"embedding\": [0.01, 0.02] \n        },\n        null,\n        {\n            \"text\": \"Third document text\",\n            \"ids\": [{\"type\": \"nik\", \"value\": \"3271041234567890\"}],\n            \"embedding\": [0.03, 0.04]\n        }\n    ],\n    \"errors\": {\n        \"files.1\": [\"Gemini extraction failed\"]\n    }\n}"
                 },
                 {
                   "name": "500150 All Files Gemini Failed",
@@ -262,6 +282,36 @@
                   ],
                   "cookie": [],
                   "body": "{\n    \"code\": 500050,\n    \"message\": \"Internal server error\"\n}"
+                },
+                {
+                  "name": "500010 Missing API Key",
+                  "originalRequest": {},
+                  "status": "Unauthorized",
+                  "code": 401,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\"code\": 500010, \"message\": \"Invalid or missing API key\"}"
+                },
+                {
+                  "name": "500051 Rate Limit Exceeded",
+                  "originalRequest": {},
+                  "status": "Too Many Requests",
+                  "code": 429,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\"code\": 500051, \"message\": \"Too many requests\"}"
                 }
               ]
             }
@@ -292,6 +342,21 @@
                     ],
                     "type": "text/javascript"
                   }
+                },
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "exec": [
+                      "const embs = pm.collectionVariables.get(\"EMBEDDINGS\");",
+                      "if (embs) {",
+                      "    pm.request.body.formdata.add({",
+                      "        key: \"embeddings\",",
+                      "        value: embs",
+                      "    });",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
                 }
               ],
               "request": {
@@ -313,13 +378,13 @@
                   "mode": "formdata",
                   "formdata": [
                     {
-                      "key": "reference_files",
+                      "key": "files",
                       "type": "file",
                       "src": "test-document.pdf"
                     },
                     {
-                      "key": "compared_embeddings",
-                      "value": "[[0.0123, -0.0456, 0.0789]]",
+                      "key": "embeddings",
+                      "value": "{{EMBEDDINGS}}",
                       "type": "text"
                     }
                   ]
@@ -333,7 +398,7 @@
                     "verify"
                   ]
                 },
-                "description": "Verify reference documents against stored embeddings. Accepts reference_files (multipart) and compared_embeddings (JSON string of float arrays). Each file pairs positionally with one embedding array. Accept-Language header controls description language (en/id). Verdict thresholds: \u22650.95 tampered, \u22650.75 suspicious, \u22650.55 low_similarity, <0.55 not_similar."
+                "description": "Verify reference documents against stored embeddings. Accepts files (multipart) and embeddings (JSON string of float arrays). Each file pairs positionally with one embedding array. Accept-Language header controls description language (en/id). Verdict thresholds: ≥0.95 tampered, ≥0.75 suspicious, ≥0.55 low_similarity, <0.55 not_similar."
               },
               "response": [
                 {
@@ -409,7 +474,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500200,\n    \"message\": \"1/2 files verified\",\n    \"data\": [\n        {\n            \"similarity_score\": 0.9123,\n            \"similarity_percent\": \"91.23%\",\n            \"verdict\": \"suspicious\",\n            \"description\": \"Document is suspicious with 91.23% similarity.\"\n        },\n        null\n    ],\n    \"errors\": {\n        \"reference_files.1\": [\"No text extracted from document\"]\n    }\n}"
+                  "body": "{\n    \"code\": 500200,\n    \"message\": \"1/2 files verified\",\n    \"data\": [\n        {\n            \"similarity_score\": 0.9123,\n            \"similarity_percent\": \"91.23%\",\n            \"verdict\": \"suspicious\",\n            \"description\": \"Document is suspicious with 91.23% similarity.\"\n        },\n        null\n    ],\n    \"errors\": {\n        \"files.1\": [\"No text extracted from document\"]\n    }\n}"
                 },
                 {
                   "name": "500241 Metadata Length Mismatch",
@@ -424,7 +489,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500241,\n    \"message\": \"Invalid compared embeddings\",\n    \"errors\": {\n        \"compared_embeddings\": [\"Length mismatch: 2 vs 1\"]\n    }\n}"
+                  "body": "{\n    \"code\": 500241,\n    \"message\": \"Invalid compared embeddings\",\n    \"errors\": {\n        \"embeddings\": [\"Length mismatch: 2 vs 1\"]\n    }\n}"
                 },
                 {
                   "name": "500241 Invalid Compared Embeddings",
@@ -439,7 +504,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500241,\n    \"message\": \"Invalid compared embeddings\",\n    \"errors\": {\n        \"compared_embeddings\": [\"Expecting value: line 1 column 1 (char 0)\"]\n    }\n}"
+                  "body": "{\n    \"code\": 500241,\n    \"message\": \"Invalid compared embeddings\",\n    \"errors\": {\n        \"embeddings\": [\"Expecting value: line 1 column 1 (char 0)\"]\n    }\n}"
                 },
                 {
                   "name": "500241 Not a JSON Array",
@@ -454,7 +519,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500241,\n    \"message\": \"Invalid compared embeddings\",\n    \"errors\": {\n        \"compared_embeddings\": [\"Must be a JSON array\"]\n    }\n}"
+                  "body": "{\n    \"code\": 500241,\n    \"message\": \"Invalid compared embeddings\",\n    \"errors\": {\n        \"embeddings\": [\"Must be a JSON array\"]\n    }\n}"
                 },
                 {
                   "name": "500040 Validation - No Files",
@@ -500,6 +565,74 @@
                   ],
                   "cookie": [],
                   "body": "{\n    \"code\": 500050,\n    \"message\": \"Internal server error\"\n}"
+                },
+                {
+                  "name": "500010 Missing API Key",
+                  "originalRequest": {},
+                  "status": "Unauthorized",
+                  "code": 401,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\"code\": 500010, \"message\": \"Invalid or missing API key\"}"
+                },
+                {
+                  "name": "500051 Rate Limit Exceeded",
+                  "originalRequest": {},
+                  "status": "Too Many Requests",
+                  "code": 429,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\"code\": 500051, \"message\": \"Too many requests\"}"
+                },
+                {
+                  "name": "500200 Single File Success (Indonesian)",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept-Language",
+                        "value": "id"
+                      }
+                    ],
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "files",
+                          "type": "file",
+                          "src": "test-document.pdf"
+                        },
+                        {
+                          "key": "embeddings",
+                          "value": "{{EMBEDDINGS}}",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\"code\": 500200, \"message\": \"Verification(s) completed\", \"data\": [{\"similarity_score\": 0.6745, \"similarity_percent\": \"67.45%\", \"verdict\": \"suspicious\", \"description\": \"Dokumen ini cukup mirip dengan dokumen yang kami miliki (kemiripan 67.45%), namun ada beberapa detail yang terlihat berbeda. Sebaiknya dilakukan peninjauan manual sebelum dokumen diterima.\"}]}"
                 }
               ]
             }
@@ -681,6 +814,36 @@
                   ],
                   "cookie": [],
                   "body": "{\n    \"code\": 500050,\n    \"message\": \"Internal server error\"\n}"
+                },
+                {
+                  "name": "500010 Missing API Key",
+                  "originalRequest": {},
+                  "status": "Unauthorized",
+                  "code": 401,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\"code\": 500010, \"message\": \"Invalid or missing API key\"}"
+                },
+                {
+                  "name": "500051 Rate Limit Exceeded",
+                  "originalRequest": {},
+                  "status": "Too Many Requests",
+                  "code": 429,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\"code\": 500051, \"message\": \"Too many requests\"}"
                 }
               ]
             }
@@ -688,7 +851,7 @@
           "description": "Regex-based ID extraction from documents (no LLM)."
         }
       ],
-      "description": "All AI service endpoints. No auth required. All POST endpoints accept multipart file uploads with a 10 MB per-file limit and a 100-file per-request cap. Allowed MIME types: application/pdf, image/jpeg, image/png, image/webp, image/tiff."
+      "description": "All AI service endpoints. X-API-Key required on POST endpoints. All POST endpoints accept multipart file uploads with a 10 MB per-file limit and a 100-file per-request cap. Allowed MIME types: application/pdf, image/jpeg, image/png, image/webp, image/tiff."
     }
   ],
   "variable": [
@@ -708,7 +871,7 @@
       "type": "string"
     },
     {
-      "key": "COMPARED_EMBEDDING",
+      "key": "EMBEDDINGS",
       "value": "",
       "type": "string"
     },
