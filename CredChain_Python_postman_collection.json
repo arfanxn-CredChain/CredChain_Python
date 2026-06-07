@@ -336,7 +336,7 @@
                       "        pm.expect(r.data).to.be.an('array');",
                       "        pm.expect(r.data[0].similarity_score).to.be.a('number');",
                       "        pm.expect(r.data[0].verdict).to.be.a('string');",
-                      "        pm.expect(r.data[0].description).to.be.a('string');",
+                      "        pm.expect(r.data[0].descriptions).to.be.a('string');",
                       "    });",
                       "}"
                     ],
@@ -367,11 +367,6 @@
                     "value": "{{API_KEY}}",
                     "type": "text",
                     "description": "API key for service authentication"
-                  },
-                  {
-                    "key": "Accept-Language",
-                    "value": "en",
-                    "type": "text"
                   }
                 ],
                 "body": {
@@ -398,7 +393,7 @@
                     "verify"
                   ]
                 },
-                "description": "Verify reference documents against stored embeddings. Accepts files (multipart) and embeddings (JSON string of float arrays). Each file pairs positionally with one embedding array. Accept-Language header controls description language (en/id). Verdict thresholds: \u22650.95 tampered, \u22650.75 suspicious, \u22650.55 low_similarity, <0.55 not_similar."
+                "description": "Verify reference documents against stored embeddings. Accepts files (multipart) and embeddings (JSON string of float arrays). Each file pairs positionally with one embedding array. Descriptions are always bilingual (English and Indonesian). Verdict thresholds: \u22650.95 tampered, \u22650.75 suspicious, \u22650.55 low_similarity, <0.55 not_similar."
               },
               "response": [
                 {
@@ -414,7 +409,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500200,\n    \"message\": \"Verification(s) completed\",\n    \"data\": [\n        {\n            \"similarity_score\": 0.8745,\n            \"similarity_percent\": \"87.45%\",\n            \"verdict\": \"suspicious\",\n            \"description\": \"Document is suspicious with 87.45% similarity. Content may have been altered.\"\n        }\n    ]\n}"
+                  "body": "{\"code\": 500200, \"message\": \"Verification(s) completed\", \"data\": [{\"similarity_score\": 0.8745, \"similarity_percent\": \"87.45%\", \"verdict\": \"suspicious\", \"descriptions\": {\"en\": \"Document is suspicious with 87.45% similarity. Content may have been altered.\", \"id\": \"Document is suspicious with 87.45% similarity. Content may have been altered.\"}}]}"
                 },
                 {
                   "name": "500200 Tampered Verdict",
@@ -429,7 +424,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500200,\n    \"message\": \"Verification(s) completed\",\n    \"data\": [\n        {\n            \"similarity_score\": 0.9732,\n            \"similarity_percent\": \"97.32%\",\n            \"verdict\": \"tampered\",\n            \"description\": \"Document is tampered with 97.32% similarity. Near-perfect match suggests copied content with minor edits.\"\n        }\n    ]\n}"
+                  "body": "{\"code\": 500200, \"message\": \"Verification(s) completed\", \"data\": [{\"similarity_score\": 0.9732, \"similarity_percent\": \"97.32%\", \"verdict\": \"tampered\", \"descriptions\": {\"en\": \"Document is tampered with 97.32% similarity. Near-perfect match suggests copied content with minor edits.\", \"id\": \"Document is tampered with 97.32% similarity. Near-perfect match suggests copied content with minor edits.\"}}]}"
                 },
                 {
                   "name": "500200 Low Similarity Verdict",
@@ -444,7 +439,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500200,\n    \"message\": \"Verification(s) completed\",\n    \"data\": [\n        {\n            \"similarity_score\": 0.6234,\n            \"similarity_percent\": \"62.34%\",\n            \"verdict\": \"low_similarity\",\n            \"description\": \"Document has low similarity at 62.34%. Significant differences detected.\"\n        }\n    ]\n}"
+                  "body": "{\"code\": 500200, \"message\": \"Verification(s) completed\", \"data\": [{\"similarity_score\": 0.6234, \"similarity_percent\": \"62.34%\", \"verdict\": \"low_similarity\", \"descriptions\": {\"en\": \"Document has low similarity at 62.34%. Significant differences detected.\", \"id\": \"Document has low similarity at 62.34%. Significant differences detected.\"}}]}"
                 },
                 {
                   "name": "500200 Not Similar Verdict",
@@ -459,7 +454,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500200,\n    \"message\": \"Verification(s) completed\",\n    \"data\": [\n        {\n            \"similarity_score\": 0.2105,\n            \"similarity_percent\": \"21.05%\",\n            \"verdict\": \"not_similar\",\n            \"description\": \"Document is not similar at 21.05%. Content appears to be completely different.\"\n        }\n    ]\n}"
+                  "body": "{\"code\": 500200, \"message\": \"Verification(s) completed\", \"data\": [{\"similarity_score\": 0.2105, \"similarity_percent\": \"21.05%\", \"verdict\": \"not_similar\", \"descriptions\": {\"en\": \"Document is not similar at 21.05%. Content appears to be completely different.\", \"id\": \"Document is not similar at 21.05%. Content appears to be completely different.\"}}]}"
                 },
                 {
                   "name": "500200 Multi-File Partial Success",
@@ -474,7 +469,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"code\": 500200,\n    \"message\": \"1/2 files verified\",\n    \"data\": [\n        {\n            \"similarity_score\": 0.9123,\n            \"similarity_percent\": \"91.23%\",\n            \"verdict\": \"suspicious\",\n            \"description\": \"Document is suspicious with 91.23% similarity.\"\n        },\n        null\n    ],\n    \"errors\": {\n        \"files.1\": [\"No text extracted from document\"]\n    }\n}"
+                  "body": "{\"code\": 500200, \"message\": \"1/2 files verified\", \"data\": [{\"similarity_score\": 0.9123, \"similarity_percent\": \"91.23%\", \"verdict\": \"suspicious\", \"descriptions\": {\"en\": \"Document is suspicious with 91.23% similarity.\", \"id\": \"Document is suspicious with 91.23% similarity.\"}}, null], \"errors\": {\"files.1\": [\"No text extracted from document\"]}}"
                 },
                 {
                   "name": "500241 Metadata Length Mismatch",
@@ -595,44 +590,6 @@
                   ],
                   "cookie": [],
                   "body": "{\"code\": 500051, \"message\": \"Too many requests\"}"
-                },
-                {
-                  "name": "500200 Single File Success (Indonesian)",
-                  "originalRequest": {
-                    "method": "POST",
-                    "header": [
-                      {
-                        "key": "Accept-Language",
-                        "value": "id"
-                      }
-                    ],
-                    "body": {
-                      "mode": "formdata",
-                      "formdata": [
-                        {
-                          "key": "files",
-                          "type": "file",
-                          "src": "test-document.pdf"
-                        },
-                        {
-                          "key": "embeddings",
-                          "value": "{{EMBEDDINGS}}",
-                          "type": "text"
-                        }
-                      ]
-                    }
-                  },
-                  "status": "OK",
-                  "code": 200,
-                  "_postman_previewlanguage": "json",
-                  "header": [
-                    {
-                      "key": "Content-Type",
-                      "value": "application/json"
-                    }
-                  ],
-                  "cookie": [],
-                  "body": "{\"code\": 500200, \"message\": \"Verification(s) completed\", \"data\": [{\"similarity_score\": 0.6745, \"similarity_percent\": \"67.45%\", \"verdict\": \"suspicious\", \"description\": \"Dokumen ini cukup mirip dengan dokumen yang kami miliki (kemiripan 67.45%), namun ada beberapa detail yang terlihat berbeda. Sebaiknya dilakukan peninjauan manual sebelum dokumen diterima.\"}]}"
                 }
               ]
             }

@@ -86,7 +86,7 @@ CredChain_Python/
     logger.py           → structured JSON logger (mirrors Go's zap shape)
     gemini.py           → GeminiClient — Files API (batch) + direct upload (single) + retry logic
     embeddings.py       → EmbeddingGemma encode + cosine_similarity helper
-    description.py      → single-language description from locales/ templates (no LLM call)
+    description.py      → bilingual description from locales/ templates (no LLM call)
     i18n.py             → locale loader + localize(key, lang, **vars)
     verdict.py          → similarity → verdict mapping (configurable thresholds)
     prompts.py          → Gemini prompt constants (PROMPT_EXTRACT_DOCUMENT, PROMPT_EXTRACT_IDS)
@@ -112,7 +112,7 @@ All POST endpoints accept `files: list[UploadFile]` (multi-file batch). Hard cap
 | Method | Path | Purpose | Code |
 |---|---|---|---|
 | POST | `/extract` | Gemini Files API extraction, returns `{text, ids, embedding}` | 500100 |
-| POST | `/verify` | Gemini direct upload + EmbeddingGemma similarity, returns `{similarity_score, similarity_percent, verdict, description}` | 500200 |
+| POST | `/verify` | Gemini direct upload + EmbeddingGemma similarity, returns `{similarity_score, similarity_percent, verdict, descriptions}` | 500200 |
 | POST | `/extract-ids` | Gemini ID extraction, returns `{ids}` only | 500300 |
 | GET | `/health` | Liveness, returns `"healthy"` or `"model loading"` | 500900 / 500950 |
 
@@ -202,9 +202,9 @@ The verdict is computed from embedding cosine similarity alone (EmbeddingGemma).
 
 ### Locale-Based Description Generation
 
-`/verify` returns a single-language human-readable description for each verdict (language resolved from `Accept-Language` header via i18n middleware). Descriptions are rendered from `locales/{en,id}.json` templates — **no LLM call** for descriptions. This keeps `/verify` fast and deterministic.
+`/verify` returns **bilingual** human-readable descriptions for each verdict (always both English and Indonesian). Descriptions are rendered from `locales/{en,id}.json` templates — **no LLM call** for descriptions. This keeps `/verify` fast and deterministic.
 
-`app/i18n.localize(key, lang, **vars)` resolves the template and substitutes variables. `app/description.build_description(verdict, similarity_percent, lang)` orchestrates the lookup.
+`app/i18n.localize(key, lang, **vars)` resolves the template and substitutes variables. `app/description.build_description(verdict, similarity_percent)` returns `{"en": "...", "id": "..."}` — always both languages.
 
 ### i18n Middleware
 
