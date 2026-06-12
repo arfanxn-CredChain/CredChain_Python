@@ -6,7 +6,7 @@ This file is the authoritative reference for AI assistants and engineers working
 
 ## Repo Position
 
-Sibling to `CredChain_Golang/` (backend, sole HTTP caller), `CredChain_Solidity/` (contracts), and `CredChain_React_Demo/` (deprecated).
+Sibling to `CredChain_Golang/` (backend, sole HTTP caller), `CredChain_Solidity/` (contracts), and `CredChain_React/` (frontend).
 
 - **Consumer:** the Go backend is the only intended caller. Requests flow `React → Go API → Python AI`. The frontend never talks to this service directly.
 - **Locales:** `locales/{en,id}.json` are tracked and kept in sync with the corresponding files in `CredChain_Golang/locales/`.
