@@ -324,6 +324,12 @@ Before pushing, run the repo's canonical verification command and confirm it pas
 make lint && make typecheck && make test
 ```
 
+### API Key Sync
+
+After running `make docker-generate-api-key`, copy the `API_KEY` value from
+`.env.docker` to Go's `.env.docker` as `PYTHON_AI_API_KEY=<value>`.
+If they mismatch, all AI requests from the Go backend fail with 401.
+
 ## See Also
 
 - `README.md` — quick-start for human contributors
