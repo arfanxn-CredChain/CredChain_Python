@@ -3,7 +3,7 @@ services:
     build:
       context: .
     image: arfanxn/credchain-python:latest
-    container_name: credchain-python
+    container_name: python
     env_file:
       - .env.docker
     ports:
