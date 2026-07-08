@@ -1,40 +1,35 @@
 # CredChain Python AI Service
 
-Internal FastAPI service for OCR, field extraction, semantic similarity,
-and bilingual description generation on credential documents.
+Internal FastAPI service for document OCR, field extraction (Gemini),
+semantic similarity (EmbeddingGemma), and bilingual description rendering.
 
 **Not for public exposure.** Reachable only inside the Docker `backend`
 network by the Go backend at `http://credchain-python:8081`.
 
+## Architecture
+
+- **OCR + extraction:** Google Gemini (`gemini-3.1-flash-lite`)
+- **Embeddings:** `google/embeddinggemma-300M` via sentence-transformers
+- **ID extraction:** Gemini-native (no regex-only fallback)
+- **Descriptions:** Rendered from locale templates in `./locales/{id,en}.json`
+
 ## Quickstart (local)
 
     cp .env.example .env
+    # Edit .env: fill in GEMINI_API_KEY and HF_TOKEN
     make install
     make serve
 
 ## Quickstart (Docker)
 
-Models are NOT baked into the Docker image — they live on the host and
-are mounted as read-only volumes at runtime. Run `make download-models`
-once before the first build:
-
-    make install
-    make download-models
-
-This downloads three models into host directories (gitignored):
-
-| Directory | Model | Size |
-|---|---|---|
-| `./models/easyocr/` | EasyOCR (id + en) | ~150 MB |
-| `./models/labse/` | LaBSE (sentence-transformers) | ~1.8 GB |
-| `./models/qwen/` | Qwen2.5-0.5B-Instruct Q4_K_M GGUF | ~0.4 GB |
-
-The download is resumable — re-run `make download-models` if it fails
-partway. Already-downloaded files are skipped automatically.
-
-Once models are downloaded:
-
+    cp .env.example .env.docker
+    # Edit .env.docker: fill in GEMINI_API_KEY and HF_TOKEN
+    # Set LOCALES_DIR=/app/locales in .env.docker
+    make docker-generate-api-key
     make docker-up-build
+
+EmbeddingGemma (~300M params) downloads automatically on first startup.
+The healthcheck waits up to 240s for model download.
 
 ## Endpoints
 
@@ -43,15 +38,16 @@ Response shape: `{code, message, data: list[T|null], errors: {"files.<i>": [...]
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | /extract | Batch OCR + LaBSE embedding + Qwen field extraction |
+| POST | /extract | Batch OCR + Gemini field extraction + EmbeddingGemma embedding |
 | POST | /verify | Batch similarity + verdict + bilingual description |
-| POST | /extract-ids | Batch regex-based ID extraction (no LLM) |
+| POST | /extract-ids | Batch ID extraction (Gemini-native) |
 | GET | /health | Liveness + model readiness |
 
 ### POST /extract
 
 Upload one or more credential documents. Returns OCR text, 768-dim
-LaBSE embedding, and Qwen-extracted field key-value pairs per file.
+EmbeddingGemma embedding, and Gemini-extracted field key-value pairs
+per file.
 
 ```bash
 curl -X POST http://localhost:8081/extract \
@@ -61,66 +57,50 @@ curl -X POST http://localhost:8081/extract \
 ### POST /verify
 
 Verify uploaded documents against stored embeddings and fields.
-Uses **Option B metadata blob** — a single `metadata` JSON form field
-pairing each file with its stored data by index.
+Accepts an `embeddings` JSON form field — an array of float arrays,
+one per file, indexed by position.
 
 ```bash
 curl -X POST http://localhost:8081/verify \
   -F "files=@doc.pdf" \
-  -F 'metadata=[{"stored_embeddings":[0.1,...],"stored_fields":{"name":"John"}}]'
+  -F 'embeddings=[[0.1,0.2,...],[0.3,0.4,...]]'
 ```
 
-`len(files)` must equal `len(metadata)`. Mismatch returns HTTP 400.
+`len(files)` must equal `len(embeddings)`. Mismatch returns HTTP 400.
 
-Verdicts: `TAMPERED` (≥0.95) | `SUSPICIOUS` (≥0.75) | `LOW_SIMILARITY` (≥0.40) | `NOT_SIMILAR` (<0.40)
+Verdicts: `TAMPERED` (≥0.95) | `SUSPICIOUS` (≥0.75) | `LOW_SIMILARITY` (≥0.55) | `NOT_SIMILAR` (<0.55)
 
-Descriptions are rendered from `locales/{id,en}.json` templates — no LLM call.
+Descriptions are rendered from `locales/{id,en}.json` templates.
 
 ### POST /extract-ids
 
-Regex-only ID extraction (no LLM). Returns all ID-like values found
-in each document. Empty list is a valid result (not an error).
+Extract ID-like values from documents using Gemini (not regex-only).
+Returns all ID-like values found in each document. Empty list is a
+valid result (not an error).
 
 ```bash
 curl -X POST http://localhost:8081/extract-ids \
   -F "files=@doc.pdf"
 ```
 
-Built-in patterns: Indonesian NIK (16-digit), NIP (18-digit), NIM (8-12 digit),
-NPWP, plus generic hyphenated codes, grouped alnum, UUID, ULID.
-
-Custom patterns: create `./custom_id_patterns.txt` (one regex per line).
-Set `OVERRIDE_BUILTIN_ID_PATTERNS=true` to use only custom patterns.
-
 ## Commands
 
-    make test          # run pytest (mocked, ~15s, 123 tests)
+    make test          # run pytest (mocked)
     make lint          # ruff check
     make typecheck     # mypy
     make format        # ruff format
     make docker-fresh  # down + rebuild + ps
-
-## Models (mounted at runtime)
-
-- EasyOCR (id + en)
-- LaBSE (sentence-transformers)
-- Qwen2.5-0.5B-Instruct Q4_K_M GGUF (via llama-cpp-python)
-
-The LLM layer uses llama.cpp with 4-bit quantization (Q4_K_M GGUF) for fast
-CPU inference. `/extract` completes in ~10-30 seconds; `/verify` in ~25-30
-seconds. Bilingual descriptions for `/verify` are rendered from locale
-templates in `./locales/{id,en}.json` (no LLM call for descriptions).
 
 ## Key Env Vars
 
 | Var | Default | Purpose |
 |---|---|---|
 | `FASTAPI_PORT` | 8081 | HTTP port |
-| `MODEL_DIR` | /models | parent dir for model subdirs |
-| `CUSTOM_ID_PATTERNS_FILE` | ./custom_id_patterns.txt | optional regex patterns |
-| `OVERRIDE_BUILTIN_ID_PATTERNS` | false | true = skip built-in ID patterns |
-| `MAX_FILES_PER_REQUEST` | 100 | hard cap on multi-file upload |
+| `GEMINI_API_KEY` | — | Google Gemini API key (required) |
+| `HF_TOKEN` | — | HuggingFace token for EmbeddingGemma (required) |
+| `API_KEY` | — | X-API-Key secret (empty = auth disabled) |
 | `LOCALES_DIR` | ./locales | locale JSON files for descriptions |
+| `MAX_FILES_PER_REQUEST` | 100 | hard cap on multi-file upload |
 
 See `.env.example` for the full list.
 
