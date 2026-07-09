@@ -1,114 +1,85 @@
-# CredChain Python AI Service
+# CredChain — Python AI Service
 
-Internal FastAPI service for document OCR, field extraction (Gemini),
-semantic similarity (EmbeddingGemma), and bilingual description rendering.
+Internal FastAPI service for document OCR, field extraction (Gemini), semantic similarity (EmbeddingGemma), and bilingual description rendering.
 
-**Not for public exposure.** Reachable only inside the Docker `backend`
-network by the Go backend at `http://python:8081`.
+Not for public exposure. Reachable only inside the Docker `backend` network at `http://python:8081`.
 
-## Architecture
+## Stack
 
-- **OCR + extraction:** Google Gemini (`gemini-3.1-flash-lite`)
-- **Embeddings:** `google/embeddinggemma-300M` via sentence-transformers
-- **ID extraction:** Gemini-native (no regex-only fallback)
-- **Descriptions:** Rendered from locale templates in `./locales/{id,en}.json`
-
-## Quickstart (local)
-
-    cp .env.example .env
-    # Edit .env: fill in GEMINI_API_KEY and HF_TOKEN
-    make install
-    make serve
-
-## Quickstart (Docker)
-
-    cp .env.example .env.docker
-    # Edit .env.docker: fill in GEMINI_API_KEY and HF_TOKEN
-    # Set LOCALES_DIR=/app/locales in .env.docker
-    make docker-generate-api-key
-    make docker-up-build
-
-EmbeddingGemma (~300M params) downloads automatically on first startup.
-The healthcheck waits up to 240s for model download.
+Python 3.11 · FastAPI 0.115.5 · Uvicorn 0.32.1 · Google Gemini (genai 2.8.0) · EmbeddingGemma via sentence-transformers · torch 2.12.0 (CPU-only) · slowapi 0.1.9
 
 ## Endpoints
 
-All POST endpoints accept **multiple files** (`files: list[UploadFile]`).
-Response shape: `{code, message, data: list[T|null], errors: {"files.<i>": [...]}}`
-
 | Method | Path | Purpose |
-|--------|------|---------|
-| POST | /extract | Batch OCR + Gemini field extraction + EmbeddingGemma embedding |
-| POST | /verify | Batch similarity + verdict + bilingual description |
-| POST | /extract-ids | Batch ID extraction (Gemini-native) |
-| GET | /health | Liveness + model readiness |
-
-### POST /extract
-
-Upload one or more credential documents. Returns OCR text, 768-dim
-EmbeddingGemma embedding, and Gemini-extracted field key-value pairs
-per file.
-
-```bash
-curl -X POST http://localhost:8081/extract \
-  -F "files=@doc1.pdf" -F "files=@doc2.pdf"
-```
-
-### POST /verify
-
-Verify uploaded documents against stored embeddings and fields.
-Accepts an `embeddings` JSON form field — an array of float arrays,
-one per file, indexed by position.
-
-```bash
-curl -X POST http://localhost:8081/verify \
-  -F "files=@doc.pdf" \
-  -F 'embeddings=[[0.1,0.2,...],[0.3,0.4,...]]'
-```
-
-`len(files)` must equal `len(embeddings)`. Mismatch returns HTTP 400.
-
-Verdicts: `TAMPERED` (≥0.95) | `SUSPICIOUS` (≥0.75) | `LOW_SIMILARITY` (≥0.55) | `NOT_SIMILAR` (<0.55)
-
-Descriptions are rendered from `locales/{id,en}.json` templates.
-
-### POST /extract-ids
-
-Extract ID-like values from documents using Gemini (not regex-only).
-Returns all ID-like values found in each document. Empty list is a
-valid result (not an error).
-
-```bash
-curl -X POST http://localhost:8081/extract-ids \
-  -F "files=@doc.pdf"
-```
-
-## Commands
-
-    make test          # run pytest (mocked)
-    make lint          # ruff check
-    make typecheck     # mypy
-    make format        # ruff format
-    make docker-fresh  # down + rebuild + ps
-
-## Key Env Vars
-
-| Var | Default | Purpose |
 |---|---|---|
-| `FASTAPI_PORT` | 8081 | HTTP port |
-| `GEMINI_API_KEY` | — | Google Gemini API key (required) |
-| `HF_TOKEN` | — | HuggingFace token for EmbeddingGemma (required) |
-| `API_KEY` | — | X-API-Key secret (empty = auth disabled) |
-| `LOCALES_DIR` | ./locales | locale JSON files for descriptions |
-| `MAX_FILES_PER_REQUEST` | 100 | hard cap on multi-file upload |
+| POST | `/extract` | Batch OCR + Gemini extraction + EmbeddingGemma embedding |
+| POST | `/verify` | Batch similarity + verdict + bilingual description |
+| POST | `/extract-ids` | Batch ID extraction (Gemini-native) |
+| GET | `/health` | Liveness + model readiness |
 
-See `.env.example` for the full list.
+All POST endpoints accept multiple files. Response shape: `{code, message, data, errors}`.
+`/verify` accepts an `embeddings` JSON form field (array of float arrays), one per file.
+POST endpoints require `X-API-Key` header (disabled when `API_KEY` is empty).
 
-## Postman Collection
+### Verdicts
 
-Import `CredChain_Python_postman_collection.json` into Postman for
-ready-to-use request examples for all endpoints.
+| Verdict | Threshold |
+|---|---|
+| `tampered` | similarity ≥ 0.95 |
+| `suspicious` | similarity ≥ 0.75 |
+| `low_similarity` | similarity ≥ 0.55 |
+| `not_similar` | similarity < 0.55 |
 
-## Spec
+## Quick Start
 
-`docs/superpowers/specs/2026-05-30-credchain-python-regex-only-extract-ids-and-multifile.md`
+```bash
+# Local
+cp .env.example .env
+# Set GEMINI_API_KEY and HF_TOKEN
+make install
+make serve
+
+# Docker
+cp .env.example .env.docker
+# Set GEMINI_API_KEY and HF_TOKEN
+make docker-generate-api-key
+make docker-up-build
+```
+
+The health check waits up to 600s for the embedding model to download on first start.
+
+## Project Structure
+
+```
+app/
+├── main.py           # FastAPI app, lifespan (model loading), middleware
+├── routes.py         # 4 endpoints
+├── schemas.py        # Pydantic response models
+├── config.py         # Pydantic-settings env loader
+├── codes.py          # 50xxxx response codes
+├── errors.py         # AppError + HTTP status mapping
+├── gemini.py         # Gemini client (Files API + direct upload + retry)
+├── embeddings.py     # EmbeddingGemma encode + cosine_similarity
+├── verdict.py        # Similarity → verdict mapping
+├── description.py    # Bilingual description from locale templates
+├── i18n.py           # Locale loader + localize()
+├── prompts.py        # Gemini prompt constants
+├── middleware.py      # slowapi rate limiter
+├── cli.py            # Typer CLI (generate-api-key)
+└── logger.py         # Structured JSON logger
+```
+
+## Key Commands
+
+| Command | Purpose |
+|---|---|
+| `make serve` | Start dev server |
+| `make test` | Run tests |
+| `make lint` | Ruff lint |
+| `make typecheck` | Mypy |
+| `make docker-up` | Start Docker containers |
+| `make generate-api-key` | Generate a 64-char hex API key |
+
+## Related Docs
+
+- [AGENTS.md](AGENTS.md) — Full architecture, middleware details, cross-repo integration
