@@ -4,7 +4,7 @@ Internal FastAPI service for document OCR, field extraction (Gemini),
 semantic similarity (EmbeddingGemma), and bilingual description rendering.
 
 **Not for public exposure.** Reachable only inside the Docker `backend`
-network by the Go backend at `http://credchain-python:8081`.
+network by the Go backend at `http://python:8081`.
 
 ## Architecture
 
