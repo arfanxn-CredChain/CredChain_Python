@@ -1,6 +1,6 @@
 # CredChain Python - Agent Instructions
 
-Python AI service called by the Go backend over HTTP. Uses Google Gemini (Files API + direct upload) for document extraction and EmbeddingGemma (sentence-transformers) for semantic similarity embeddings. Requires a Gemini API key — no longer fully offline. API key authentication required on POST endpoints. Rate-limited at 1200 req/min per IP (burst 100) via slowapi. Reachable only inside the Docker backend network — **never expose to public internet**.
+Python AI service called by the Go backend over HTTP. Uses Google Gemini (Files API + direct upload) for document extraction and EmbeddingGemma (sentence-transformers) for semantic similarity embeddings. Requires a Gemini API key — no longer fully offline. API key authentication required on POST endpoints. Rate-limited at 1200 req/min per IP via slowapi. Reachable only inside the Docker backend network — **never expose to public internet**.
 
 This file is the authoritative reference for AI assistants and engineers working in `CredChain_Python/`.
 
@@ -57,13 +57,14 @@ Pinned in `pyproject.toml`:
 | Language | Python | ≥3.11, <3.13 |
 | Web framework | FastAPI | 0.115.5 |
 | ASGI server | uvicorn[standard] | 0.32.1 |
-| Gemini SDK | google-genai | — |
+| Gemini SDK | google-genai | 2.8.0 |
 | Embeddings | sentence-transformers (EmbeddingGemma) | ≥3.3.1 |
-| HuggingFace | huggingface-hub | — |
+| HuggingFace | huggingface-hub | 1.18.0 |
 | Math | numpy | — |
 | Image | Pillow | 11.0.0 |
-| Rate limiting | slowapi | — |
-| CLI | typer | — |
+| ML framework | torch (CPU-only, installed in Dockerfile) | 2.12.0 |
+| Rate limiting | slowapi | 0.1.9 |
+| CLI | typer | (transitive dep via huggingface_hub — not declared in pyproject.toml) |
 | Test | pytest | 8.3.4 |
 | Async test | pytest-asyncio | 0.24.0 |
 | HTTP test | httpx | 0.28.1 |
@@ -72,7 +73,7 @@ Pinned in `pyproject.toml`:
 
 ## Project Architecture
 
-Flat layout under `app/`. 14 source modules + `tests/`:
+Flat layout under `app/`. 15 source modules + `tests/`:
 
 ```
 CredChain_Python/
@@ -91,6 +92,8 @@ CredChain_Python/
     verdict.py          → similarity → verdict mapping (configurable thresholds)
     prompts.py          → Gemini prompt constants (PROMPT_EXTRACT_DOCUMENT, PROMPT_EXTRACT_IDS)
     middleware.py       → slowapi rate limiter (1200/min, IP-keyed) + API key authentication middleware
+
+The active API key middleware is an inline function in `main.py:119-133`, not the `ApiKeyMiddleware` class in `middleware.py:32-49`. The class in middleware.py is not imported or used.
     cli.py              → Typer CLI — `generate-api-key` command for API key generation
   tests/                → conftest.py + test files (fully mocked)
   locales/              → tracked, JSON locale files (id, en) for description templates
@@ -114,7 +117,7 @@ All POST endpoints accept `files: list[UploadFile]` (multi-file batch). Hard cap
 | POST | `/extract` | Gemini Files API extraction, returns `{text, ids, embedding}` | 500100 |
 | POST | `/verify` | Gemini direct upload + EmbeddingGemma similarity, returns `{similarity_score, similarity_percent, verdict, descriptions}` | 500200 |
 | POST | `/extract-ids` | Gemini ID extraction, returns `{ids}` only | 500300 |
-| GET | `/health` | Liveness, returns `"healthy"` or `"model loading"` | 500900 / 500950 |
+| GET | `/health` | Liveness, returns `{"code": 500900, "message": "healthy"}` (200) or `{"code": 500950, "message": "model loading"}` (503) | 500900 / 500950 |
 
 Upload limit: 10 MB per file. Allowed MIME: `application/pdf`, `image/{jpeg,png,webp,tiff}`. `validate_file` enforces both limits before any processing.
 
@@ -242,7 +245,7 @@ Global rate limiter via slowapi (ASGI middleware), keyed by IP address — mirro
 
 | Limit | Burst | Key | Scope |
 |---|---|---|---|
-| 1200 req/min | 100 | `get_remote_address` (IP) | All routes |
+| 1200 req/min | — | `get_remote_address` (IP) | All routes |
 
 Configuration in `app/middleware.py`:
 
@@ -297,8 +300,10 @@ Implemented via Typer in `app/cli.py` using `secrets.token_hex(32)`. The `--env`
 ## Testing
 
 - **Framework:** pytest 8.3.4 + pytest-asyncio 0.24.0 + httpx 0.28.1 (for FastAPI TestClient)
-- **Fixtures:** `tests/conftest.py` provides mocked `embedding_model` and `gemini_client` dependencies.
-- **Coverage layout:** every `app/*.py` module has a matching `tests/test_*.py`.
+- **Fixtures:** `tests/conftest.py` provides mocked `mock_embedding_model` and `mock_gemini_client` dependencies.
+- **Coverage layout:** 7 of 15 source modules have test files: `test_cli.py`, `test_description.py`, `test_embeddings.py`, `test_gemini.py`, `test_routes.py`, `test_schemas.py`, `test_verdict.py`.
+
+Modules without tests: `codes.py`, `config.py`, `errors.py`, `i18n.py`, `logger.py`, `main.py`, `middleware.py`, `prompts.py`.
 - **mypy:** strict mode on `app/`; relaxed on `tests/` (allows missing return type annotations on test functions).
 - **ruff config:** select `E,F,I,N,UP,B,SIM,RET,PT`; line-length 100; `B008` ignored in `app/routes.py` (FastAPI `Depends()` / `File()` defaults are idiomatic).
 - **pytest config:** `testpaths=["tests"]`, asyncio mode auto.
