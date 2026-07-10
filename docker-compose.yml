@@ -9,8 +9,8 @@ services:
     ports:
       - "127.0.0.1:8081:8081"
     networks:
-      - backend
+      - credchain
 
 networks:
-  backend:
+  credchain:
     external: true
