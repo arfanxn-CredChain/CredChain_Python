@@ -1,48 +1,15 @@
-.PHONY: install serve dev test lint typecheck format \
-	docker-up docker-up-build docker-down docker-logs docker-ps docker-fresh \
-	generate-api-key docker-generate-api-key
+# CredChain Python (AI service) — always runs in Docker.
+# Orchestration (up/down/logs) lives in CredChain_Golang. These are the
+# service-local tasks only.
 
-install:
-	pip install -e ".[dev]"
+.PHONY: check format generate-api-key
 
-serve:
-	uvicorn app.main:app --host 0.0.0.0 --port 8081 --workers 1
-
-dev:
-	uvicorn app.main:app --host 0.0.0.0 --port 8081 --workers 1 --reload
-
-test:
-	pytest tests/ -v
-
-lint:
-	ruff check
-
-typecheck:
-	mypy app/ tests/
+# Pre-push gate: lint + typecheck + tests, run inside the container (no host venv).
+check:
+	docker compose run --rm python sh -c "ruff check && mypy app/ tests/ && pytest tests/ -v"
 
 format:
-	ruff format .
-
-docker-up:
-	docker compose up -d
-
-docker-up-build:
-	docker compose up -d --build
-
-docker-down:
-	docker compose down
-
-docker-logs:
-	docker compose logs -f
-
-docker-ps:
-	docker compose ps
-
-docker-fresh:
-	docker compose down && docker compose up -d --build && docker compose ps
+	docker compose run --rm python ruff format .
 
 generate-api-key:
-	python -m app.cli --env .env
-
-docker-generate-api-key:
-	python -m app.cli --env .env.docker
+	docker compose run --rm python python -m app.cli --env .env.docker

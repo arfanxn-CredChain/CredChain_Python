@@ -15,32 +15,21 @@ Sibling to `CredChain_Golang/` (backend, sole HTTP caller), `CredChain_Solidity/
 ## Critical Commands
 
 ```bash
-python3.11 -m venv .venv && source .venv/bin/activate    # one-time
-make install                                              # install deps + dev extras
-make serve                                                # run uvicorn locally on :8081 (single worker)
-make dev                                                  # uvicorn with --reload
-make test                                                 # pytest tests/ -v
-make lint                                                 # ruff check
-make typecheck                                            # mypy (strict mode on source, relaxed on tests)
-make format                                               # ruff format
-make docker-up-build                                      # docker compose up -d --build
-make docker-down                                          # docker compose down
-make docker-fresh                                         # down + up-build + ps
-make generate-api-key                                      # generate 64-char hex API key → .env
-make docker-generate-api-key                               # generate 64-char hex API key → .env.docker
+# The Python service ALWAYS runs in Docker, started by the orchestrator:
+#   cd ../CredChain_Golang && make up        # full stack (prod)
+#   cd ../CredChain_Golang && make dev-up    # local hybrid
+
+# Service-local tasks (run inside the container, no host venv needed):
+make check              # ruff check + mypy app/ tests/ + pytest tests/ -v  (pre-push gate)
+make format             # ruff format
+make generate-api-key   # generate 64-char hex API key → .env.docker
 ```
 
-No CI pipeline is configured.
+No CI pipeline is configured. There are no host run targets (`serve`/`dev`/`install`) — the service is developed and run in the container.
 
 ## Environment Setup
 
-Copy `.env.example` → `.env` (or `.env.docker` for Docker-internal hostnames). Required steps before first run:
-
-```bash
-python3.11 -m venv .venv && source .venv/bin/activate
-make install
-make serve              # binds :8081 by default
-```
+Copy `.env.example` → `.env.docker` and fill in the keys below. Deps are installed when the container image is built; there is no host venv step. The service is started by the orchestrator (`cd ../CredChain_Golang && make up` or `make dev-up`) and binds `:8081`.
 
 **Required API keys:**
 - `GEMINI_API_KEY` — Google Gemini API key (fatal if empty; extraction calls will fail)
@@ -267,8 +256,7 @@ Registered as `SlowAPIASGIMiddleware` in `main.py`. Rate-limit exceeded returns 
 Generate a 64-char hex API key and write it to an env file:
 
 ```bash
-make generate-api-key       # writes to .env
-make docker-generate-api-key # writes to .env.docker
+make generate-api-key       # runs in the container, writes to .env.docker
 ```
 
 Implemented via Typer in `app/cli.py` using `secrets.token_hex(32)`. The `--env`/`-e` flag specifies the target file. Finds `API_KEY=` line and replaces; appends if not found. Prints the generated key to stdout.
@@ -326,12 +314,12 @@ Locale files in `locales/{en,id}.json` provide the description templates rendere
 Before pushing, run the repo's canonical verification command and confirm it passes:
 
 ```bash
-make lint && make typecheck && make test
+make check
 ```
 
 ### API Key Sync
 
-After running `make docker-generate-api-key`, copy the `API_KEY` value from
+After running `make generate-api-key`, copy the `API_KEY` value from
 `.env.docker` to Go's `.env.docker` as `PYTHON_AI_API_KEY=<value>`.
 If they mismatch, all AI requests from the Go backend fail with 401.
 

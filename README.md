@@ -32,18 +32,15 @@ POST endpoints require `X-API-Key` header (disabled when `API_KEY` is empty).
 
 ## Quick Start
 
-```bash
-# Local
-cp .env.example .env
-# Set GEMINI_API_KEY and HF_TOKEN
-make install
-make serve
+The service always runs in Docker, started by the orchestrator.
 
-# Docker
+```bash
 cp .env.example .env.docker
 # Set GEMINI_API_KEY and HF_TOKEN
-make docker-generate-api-key
-make docker-up-build
+make generate-api-key                 # writes API_KEY → .env.docker
+
+# Start it (from the orchestrator repo):
+cd ../CredChain_Golang && make up     # full stack, or `make dev-up` for local hybrid
 ```
 
 The health check waits up to 600s for the embedding model to download on first start.
@@ -73,12 +70,11 @@ app/
 
 | Command | Purpose |
 |---|---|
-| `make serve` | Start dev server |
-| `make test` | Run tests |
-| `make lint` | Ruff lint |
-| `make typecheck` | Mypy |
-| `make docker-up` | Start Docker containers |
-| `make generate-api-key` | Generate a 64-char hex API key |
+| `make check` | Ruff lint + Mypy + pytest (pre-push gate, runs in container) |
+| `make format` | Ruff format |
+| `make generate-api-key` | Generate a 64-char hex API key → `.env.docker` |
+
+Starting/stopping the service is done from the orchestrator (`CredChain_Golang`: `make up` / `make down` / `make dev-up`).
 
 ## Related Docs
 
