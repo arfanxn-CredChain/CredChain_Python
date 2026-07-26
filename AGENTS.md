@@ -16,7 +16,7 @@ Sibling to `CredChain_Golang/` (backend, sole HTTP caller), `CredChain_Solidity/
 
 ```bash
 # The Python service ALWAYS runs in Docker, started by the orchestrator:
-#   cd ../CredChain_Golang && make up        # full stack (prod)
+#   cd ../CredChain_Golang && make local-up        # full stack (prod)
 #   cd ../CredChain_Golang && make dev-up    # local hybrid
 
 # Service-local tasks (run inside the container, no host venv needed):
@@ -29,7 +29,7 @@ No CI pipeline is configured. There are no host run targets (`serve`/`dev`/`inst
 
 ## Environment Setup
 
-Copy `.env.example` → `.env.docker` and fill in the keys below. Deps are installed when the container image is built; there is no host venv step. The service is started by the orchestrator (`cd ../CredChain_Golang && make up` or `make dev-up`) and binds `:8081`.
+Copy `.env.example` → `.env.docker` and fill in the keys below. Deps are installed when the container image is built; there is no host venv step. The service is started by the orchestrator (`cd ../CredChain_Golang && make local-up` or `make dev-up`) and binds `:8081`.
 
 **Required API keys:**
 - `GEMINI_API_KEY` — Google Gemini API key (fatal if empty; extraction calls will fail)

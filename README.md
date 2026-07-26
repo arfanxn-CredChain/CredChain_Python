@@ -40,7 +40,7 @@ cp .env.example .env.docker
 make generate-api-key                 # writes API_KEY → .env.docker
 
 # Start it (from the orchestrator repo):
-cd ../CredChain_Golang && make up     # full stack, or `make dev-up` for local hybrid
+cd ../CredChain_Golang && make local-up     # full stack, or `make dev-up` for local hybrid
 ```
 
 The health check waits up to 600s for the embedding model to download on first start.
@@ -74,7 +74,7 @@ app/
 | `make format` | Ruff format |
 | `make generate-api-key` | Generate a 64-char hex API key → `.env.docker` |
 
-Starting/stopping the service is done from the orchestrator (`CredChain_Golang`: `make up` / `make down` / `make dev-up`).
+Starting/stopping the service is done from the orchestrator (`CredChain_Golang`: `make local-up` / `make down` / `make dev-up`).
 
 ## Related Docs
 
